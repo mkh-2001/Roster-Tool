@@ -16,12 +16,17 @@ import unicodedata
 from dataclasses import dataclass, field
 from typing import Any
 
-# Expected W-number format: uppercase "W" followed by exactly 7 digits.
-# ASSUMPTION based on the fake development data. Confirm against real roster
-# PDFs (see REAL_ROSTER_INTEGRATION.md) and adjust here if needed; this single
-# pattern is used by both the parser and the validator.
+# Valid W-number format: uppercase "W" followed by exactly 7 digits. This
+# single pattern is used by both the parser and the validator. (Real Los Rios
+# rosters print the 7 digits without the W; the parser adds it, see
+# ParseRules.printed_student_id.)
 W_NUMBER_RE = re.compile(r"W\d{7}")
 W_NUMBER_DESCRIPTION = "W followed by 7 digits"
+
+# Roster populations. Dropped students are never part of the model.
+CURRENT = "current"    # enrolled ("Current Students")
+WAITLIST = "waitlist"  # "Wait List"
+STATUSES = (CURRENT, WAITLIST)
 
 # Limits for data arriving from the UI (a trust boundary, even though local).
 MAX_STUDENTS = 2000
@@ -57,6 +62,8 @@ class Student:
     review_note: str | None = None
     # 1-based page in the source PDF (shown in the UI to help find the row).
     source_page: int | None = None
+    # Enrollment population: CURRENT or WAITLIST.
+    status: str = CURRENT
 
     @property
     def display_name(self) -> str:
@@ -72,6 +79,7 @@ class Student:
             "display_name": self.display_name,
             "review_note": self.review_note,
             "source_page": self.source_page,
+            "status": self.status,
         }
 
     @classmethod
@@ -80,6 +88,9 @@ class Student:
             raise ValueError("student must be an object")
         note = clean_text(_bounded(data.get("review_note"), "review_note"))
         page = data.get("source_page")
+        status = data.get("status", CURRENT)
+        if status not in STATUSES:
+            raise ValueError("student status must be 'current' or 'waitlist'")
         return cls(
             # W numbers are only trimmed, never otherwise altered.
             w_number=_bounded(data.get("w_number"), "w_number").strip(),
@@ -87,6 +98,7 @@ class Student:
             last_name=clean_text(_bounded(data.get("last_name"), "last_name")),
             review_note=note or None,
             source_page=page if isinstance(page, int) and not isinstance(page, bool) and page > 0 else None,
+            status=status,
         )
 
 
@@ -94,13 +106,25 @@ class Student:
 class Roster:
     course_title: str = ""
     section: str = ""
+    # Current Students and Wait List students, each tagged with `status`
+    # (in source order: current first, then wait list).
     students: list[Student] = field(default_factory=list)
-    # Student count stated by the PDF itself ("Total Enrolled: 32") or implied
-    # by its row numbering. None when the PDF gives no such cross-check.
+    # Current Students count stated by the PDF itself ("Total Enrolled: 32") or
+    # implied by its row numbering. None when the PDF gives no such cross-check.
     expected_count: int | None = None
     expected_count_source: str | None = None  # "stated" | "row_numbers"
     # Fields extracted with low confidence that the employee should confirm.
     uncertain_fields: list[str] = field(default_factory=list)
+    # Wait List count implied by the PDF's Wait List row numbering, if any.
+    expected_waitlist_count: int | None = None
+
+    @property
+    def current_students(self) -> list[Student]:
+        return [s for s in self.students if s.status == CURRENT]
+
+    @property
+    def waitlist_students(self) -> list[Student]:
+        return [s for s in self.students if s.status == WAITLIST]
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -110,6 +134,7 @@ class Roster:
             "expected_count": self.expected_count,
             "expected_count_source": self.expected_count_source,
             "uncertain_fields": list(self.uncertain_fields),
+            "expected_waitlist_count": self.expected_waitlist_count,
         }
 
     @classmethod
@@ -122,9 +147,8 @@ class Roster:
             raise ValueError("roster.students must be a list")
         if len(students_raw) > MAX_STUDENTS:
             raise ValueError("too many students")
-        expected = data.get("expected_count")
-        if expected is not None and (not isinstance(expected, int) or isinstance(expected, bool) or expected < 0):
-            raise ValueError("expected_count must be a non-negative integer or null")
+        expected = _optional_count(data.get("expected_count"), "expected_count")
+        expected_wait = _optional_count(data.get("expected_waitlist_count"), "expected_waitlist_count")
         source = data.get("expected_count_source")
         uncertain = data.get("uncertain_fields") or []
         if not isinstance(uncertain, list):
@@ -136,6 +160,7 @@ class Roster:
             expected_count=expected,
             expected_count_source=source if source in ("stated", "row_numbers") else None,
             uncertain_fields=[f for f in uncertain if f in ("course_title", "section")],
+            expected_waitlist_count=expected_wait,
         )
 
 
@@ -155,6 +180,12 @@ def output_stem(roster: Roster) -> str:
     course_code = " ".join(roster.course_title.split(" ")[:2])
     parts = [re.sub(r"[^A-Za-z0-9]+", "_", p).strip("_")[:40] for p in (course_code, roster.section)]
     return "_".join(p for p in parts if p) or "roster"
+
+
+def _optional_count(value: Any, name: str) -> int | None:
+    if value is not None and (not isinstance(value, int) or isinstance(value, bool) or value < 0):
+        raise ValueError(f"{name} must be a non-negative integer or null")
+    return value
 
 
 def _bounded(value: Any, name: str) -> str:

@@ -33,12 +33,18 @@ def bench(label: str, data: bytes, runs: int) -> bool:
     t = time.perf_counter()
     first = process_pdf(data)  # first run in this process (includes PDFium warm-up)
     first_ms = (time.perf_counter() - t) * 1000
+    errors = sum(1 for i in first.issues if i.severity == "error")
 
-    samples: dict[str, list[float]] = {k: [] for k in STAGES + ("csv", "help_sheet_3day")}
+    # A roster with validation errors is (correctly) refused by the generators,
+    # so only the extraction/parsing stages can be timed for it.
+    output_stages = () if errors else ("csv", "help_sheet_3day")
+    samples: dict[str, list[float]] = {k: [] for k in STAGES + output_stages}
     for _ in range(runs):
         result = process_pdf(data)
         for k in STAGES:
             samples[k].append(result.timings_ms[k])
+        if errors:
+            continue
         t = time.perf_counter()
         generate_csv(result.roster)
         samples["csv"].append((time.perf_counter() - t) * 1000)
@@ -46,9 +52,13 @@ def bench(label: str, data: bytes, runs: int) -> bool:
         generate_help_sheet(result.roster, "Benchmark Tutor", ["Mon", "Wed", "Fri"])
         samples["help_sheet_3day"].append((time.perf_counter() - t) * 1000)
 
-    n_students = len(first.roster.students)
-    errors = sum(1 for i in first.issues if i.severity == "error")
-    print(f"\n{label}: {len(data) / 1024:.0f} KB, {first.page_count} page(s), {n_students} students, {errors} error(s)")
+    roster = first.roster
+    print(f"\n{label}: {len(data) / 1024:.0f} KB, {first.page_count} page(s), "
+          f"{len(roster.current_students)} current + {len(roster.waitlist_students)} wait-list students, "
+          f"{errors} error(s)")
+    if errors:
+        codes = sorted({i.code for i in first.issues if i.severity == "error"})
+        print(f"  VALIDATION FAILED ({', '.join(codes)}): CSV/help-sheet timing skipped")
     print(f"  first run in process: {first_ms:8.2f} ms")
     print(f"  {'stage':<18}{'median':>10}{'p95':>10}{'max':>10}   (ms, {runs} runs)")
     for k, values in samples.items():
@@ -79,8 +89,9 @@ def main() -> int:
         for path in args.pdfs:
             ok &= bench(path.name, path.read_bytes(), args.runs)
     else:
-        from fixture_builder import ALL_FIXTURES, FIXTURE_DIR, FixtureSpec, build_pdf, make_people, rows_from
-        for spec in ALL_FIXTURES:
+        from fixture_builder import (ALL_FIXTURES, FIXTURE_DIR, SECTIONED, FixtureSpec, build_pdf, make_people,
+                                     rows_from)
+        for spec in ALL_FIXTURES + [SECTIONED]:
             ok &= bench(spec.filename, (FIXTURE_DIR / spec.filename).read_bytes(), args.runs)
         big = FixtureSpec("synthetic_300.pdf", "BIG 101 Stress Test", "99999", rows_from(make_people(300, seed=5)),
                           rows_per_page=40, stated_total=300)

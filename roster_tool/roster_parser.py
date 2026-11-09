@@ -9,18 +9,29 @@ How a document is read
 ----------------------
 1. Metadata lines ("Course: ...", "Section: ...", "Total Enrolled: 32") are
    recognised by their labels and supply course title, section and the
-   expected student count.
-2. A table header line (a cell like "ID"/"Student ID" plus a cell like
-   "Name"/"Last Name") maps x-positions to columns, if present.
-3. Every line containing something that looks like a student ID becomes a
-   student row. The ID is kept exactly as printed (malformed IDs are flagged
-   later by validation, never "fixed").
-4. Lines inside the student table that have NO ID are kept as rows with an
+   expected student count. Without a "Section:" label, the section is the
+   first class number in the "Meetings:" lines ("... LEC 12345" -> 12345).
+2. Section headings ("Current Students", "Wait List", "Drops", "Permission
+   Numbers") switch the population being read. Only Current Students and
+   Wait List rows are parsed; excluded sections are skipped without
+   extracting anything. A document without such headings is read as one
+   Current Students list.
+3. A table header line (a cell like "ID"/"Student ID" plus a cell like
+   "Name"/"Last Name") maps x-positions to columns, wherever it appears.
+4. Every line in a student section containing something that looks like a
+   student ID becomes a student row. The ID is kept as printed (malformed IDs
+   are flagged later by validation, never "fixed"), except the confirmed Los
+   Rios rule: a printed 7-digit Student ID gets its "W" prefix.
+5. Lines inside the student table that have NO ID are kept as rows with an
    empty W number and a review note, so a missing ID or wrapped text can never
    silently disappear.
-5. Row numbers printed in the PDF (1, 2, 3, ...) provide an extra count check.
+6. Row numbers printed in the PDF (1, 2, 3, ... per section, either as a
+   separate column or as a "7. " prefix on the name) provide a count check.
 
-IMPORTANT: these rules were developed against our own FAKE fixtures only.
+The PDF's filename is never available to, or used by, the parser.
+
+Developed against FAKE fixtures plus one real Los Rios "Print Roster" PDF
+(Nov 2026).
 """
 
 from __future__ import annotations
@@ -30,9 +41,11 @@ import statistics
 from dataclasses import dataclass, field
 from typing import Protocol
 
-from .models import W_NUMBER_RE, Roster, Student, normalize_roster
+from .models import CURRENT, WAITLIST, W_NUMBER_RE, Roster, Student, normalize_roster
 from .names import NOTE_NO_COMMA, split_name
 from .pdf_extractor import ExtractedDocument, TextCell, TextLine
+
+EXCLUDED = "excluded"  # a roster section whose rows are not students for this app
 
 NOTE_NO_ID = (
     "No W number on this line. It may be a student whose W number is missing, "
@@ -50,8 +63,9 @@ class ParseRules:
     # Strict, valid W number (shared with validation).
     w_number: re.Pattern = W_NUMBER_RE
     # Anything that LOOKS like an attempt at a student ID, so malformed IDs
-    # ("W123456", "w1234567", "W 1234567", "1234567") are surfaced, not skipped.
-    # Excludes email addresses (w1234567@...).
+    # ("W123456", "w1234567", "W 1234567") are surfaced, not skipped. Also
+    # matches the bare 7-digit IDs printed by Los Rios rosters (see
+    # printed_student_id). Excludes email addresses (w1234567@...).
     id_candidate: re.Pattern = re.compile(
         r"(?<![A-Za-z0-9@._])(?:[Ww][ \-#:]?\d{5,9}|\d{7})(?![A-Za-z0-9@])"
     )
@@ -68,13 +82,37 @@ class ParseRules:
         "total enrolled", "enrolled", "enrollment", "total enrollment", "total students",
         "students enrolled", "number of students",
     )
+    # "Meetings:" lines (the labelled line plus directly following meeting
+    # lines) hold class numbers: "MoWe 8:00 am - 9:15 am Room 101 LEC 12345".
+    meetings_labels: tuple[str, ...] = ("meetings",)
+    # A class number in a meeting line: component code + 5-digit number.
+    class_number: re.Pattern = re.compile(r"\b[A-Z]{3}\s+(\d{5})\b")
     # Other known labels: only used to end the value of the label before them,
     # and to recognise metadata lines.
     other_labels: tuple[str, ...] = (
         "term", "session", "instructor", "units", "room", "days", "time", "meets",
         "location", "dates", "campus", "printed", "career", "component", "mode",
         "status", "capacity", "waitlist", "waitlisted", "college", "subject",
+        "professor", "drop date", "type",
     )
+
+    # Section headings (the whole line, case-insensitive) -> population.
+    section_headings: tuple[tuple[str, str], ...] = (
+        (r"current\s+students", CURRENT),
+        (r"wait\s*list(?:ed\s+students)?", WAITLIST),
+        (r"drops|dropped\s+students", EXCLUDED),
+        (r"permission\s+numbers", EXCLUDED),
+    )
+    # Real Los Rios rosters print the Student ID as 7 digits without the "W".
+    # Confirmed by the user (2026-11-09): printed 1234567 == W number W1234567.
+    # Applied ONLY to the ID field of a recognized Current Students / Wait List row.
+    printed_student_id: re.Pattern = re.compile(r"\d{7}")
+    # The roster's row number printed at the start of a name cell: "7. Last, First".
+    name_row_number: re.Pattern = re.compile(r"^(\d{1,4})[.)]\s+")
+    # A separate cell entirely in parentheses next to the name (pronouns).
+    aux_cell: re.Pattern = re.compile(r"^\(.*\)$")
+    # Pronouns sharing the name's cell: a trailing "(she/her)"-style group.
+    trailing_pronouns: re.Pattern = re.compile(r"\s*\((?:[^()/]+/)+[^()/]+\)$")
     # Fallback: a line beginning with SUBJECT NUMBER, e.g. "PHIL 320 Logic ...".
     course_line: re.Pattern = re.compile(r"^[A-Z]{2,5}\s?\d{1,4}[A-Z]{0,2}\b")
     # Fallback for a section number given without a colon.
@@ -86,7 +124,8 @@ class ParseRules:
 
     # Whole cells that are page furniture, never student data.
     ignore_cell: re.Pattern = _rx(
-        r"^(?:page\s+\d+(?:\s+of\s+\d+)?|\d+\s+of\s+\d+|printed\b.*|run\s+date\b.*|class\s+roster.*)$"
+        r"^(?:page\s+\d+(?:\s+of\s+\d+)?|\d+\s+of\s+\d+|printed\b.*|run\s+date\b.*|class\s+roster.*"
+        r"|no\s+[a-z ]*students?)$"
     )
 
     # Table-header cells.
@@ -137,6 +176,17 @@ class _Row:
     last: str | None = None
     row_number: int | None = None
     note: str | None = None
+    population: str = CURRENT
+
+
+@dataclass
+class _Run:
+    """Consecutive lines on one page within one section and one table header."""
+
+    population: str | None  # CURRENT, WAITLIST, EXCLUDED, or None (outside any section)
+    columns: list[tuple[str, float, float]] | None
+    has_header: bool
+    lines: list[TextLine] = field(default_factory=list)
 
 
 class TableRosterParser:
@@ -147,12 +197,15 @@ class TableRosterParser:
     def __init__(self, rules: ParseRules | None = None):
         self.rules = rules or ParseRules()
         r = self.rules
-        all_labels = r.course_labels + r.title_labels + r.section_labels + r.count_labels + r.other_labels
+        all_labels = (r.course_labels + r.title_labels + r.section_labels + r.count_labels
+                      + r.meetings_labels + r.other_labels)
         alternation = "|".join(
             r"\s*".join(re.escape(word) for word in lbl.split(" "))
             for lbl in sorted(all_labels, key=len, reverse=True)
         )
         self._label_re = re.compile(rf"(?<![A-Za-z])(?P<label>{alternation})\s*:", re.IGNORECASE)
+        self._headings = [(re.compile(rf"^(?:{pattern})\s*:?$", re.IGNORECASE), population)
+                          for pattern, population in r.section_headings]
 
     # -- public -------------------------------------------------------------
 
@@ -161,20 +214,47 @@ class TableRosterParser:
         roster = Roster()
         self._read_metadata(doc, roster, diagnostics)
 
+        # With section headings, only rows under Current Students / Wait List
+        # count. Without any, the whole document is one Current Students list.
+        sectioned = any(self._heading(line) is not None for line in doc.lines)
+        population: str | None = None if sectioned else CURRENT
         rows: list[_Row] = []
         columns: list[tuple[str, float, float]] | None = None
         for page in doc.pages:
-            header_idx, page_columns = self._find_header(page.lines)
-            if page_columns:
-                columns = page_columns
-                diagnostics.append(f"page {page.number}: table header -> {[c[0] for c in columns]}")
-            elif columns:
-                diagnostics.append(f"page {page.number}: no header; reusing previous page's columns")
-            rows.extend(self._read_page_rows(page.lines, header_idx, columns, page.number, diagnostics))
+            runs = [_Run(population, columns, has_header=False)]
+            for line in page.lines:
+                heading = self._heading(line)
+                if heading is not None:
+                    population = heading
+                    runs.append(_Run(population, columns, has_header=False))
+                    continue
+                roles = self._header_roles(line)
+                if roles is not None:
+                    columns = roles
+                    diagnostics.append(f"page {page.number}: table header -> {[c[0] for c in columns]}")
+                    runs.append(_Run(population, columns, has_header=True))
+                    continue
+                runs[-1].lines.append(line)
+            first_header = next((i for i, run in enumerate(runs) if run.has_header), None)
+            for i, run in enumerate(runs):
+                if not sectioned and first_header is not None and i < first_header:
+                    continue  # title/metadata above the table header on this page
+                if run.population in (CURRENT, WAITLIST):
+                    rows.extend(self._read_run(run, page.number, diagnostics))
+                elif run.lines and sectioned:
+                    diagnostics.append(f"page {page.number}: skipped {len(run.lines)} line(s) outside "
+                                       f"Current Students / Wait List ({run.population or 'before first section'})")
 
         self._post_process(rows, roster, diagnostics)
         roster.students = [self._to_student(row) for row in rows]
         return ParseResult(roster=roster, diagnostics=diagnostics)
+
+    def _heading(self, line: TextLine) -> str | None:
+        text = line.text.strip()
+        for pattern, population in self._headings:
+            if pattern.match(text):
+                return population
+        return None
 
     # -- metadata -----------------------------------------------------------
 
@@ -235,12 +315,17 @@ class TableRosterParser:
                     diagnostics.append("course: no label; guessed from a SUBJECT NUMBER line")
                     break
 
-        # Section
+        # Section: an explicit label wins; otherwise the first class number
+        # listed in the Meetings information; otherwise a low-confidence guess.
+        meeting_numbers = self._meeting_class_numbers(doc)
         if sections:
             roster.section = sections[0]
             if len(set(sections)) > 1:
                 roster.uncertain_fields.append("section")
                 diagnostics.append("section: different values on different pages")
+        elif meeting_numbers:
+            roster.section = meeting_numbers[0]
+            diagnostics.append(f"section: first of {len(meeting_numbers)} class number(s) in Meetings")
         else:
             for line in doc.lines[:40]:
                 m = r.section_fallback.search(line.text)
@@ -256,37 +341,59 @@ class TableRosterParser:
             if len(set(counts)) > 1:
                 diagnostics.append("enrolled count: different values on different pages")
 
+    def _meeting_class_numbers(self, doc: ExtractedDocument) -> list[str]:
+        """Class numbers from the first "Meetings:" block, in order.
+
+        The block is the labelled line plus the directly following unlabelled
+        lines that are themselves meeting lines (contain a class number).
+        Nothing outside this block can become the section.
+        """
+        r = self.rules
+        lines = doc.lines
+        for i, line in enumerate(lines):
+            m = self._label_re.search(line.text)
+            if not m or re.sub(r"\s+", " ", m.group("label").lower()) not in r.meetings_labels:
+                continue
+            block = [line.text[m.end():]]
+            for nxt in lines[i + 1:]:
+                if nxt.page != line.page or self._labelled_values(nxt) or not r.class_number.search(nxt.text):
+                    break
+                block.append(nxt.text)
+            return [num for text in block for num in r.class_number.findall(text)]
+        return []
+
     # -- table structure ----------------------------------------------------
 
-    def _find_header(self, lines: list[TextLine]) -> tuple[int | None, list[tuple[str, float, float]] | None]:
+    def _header_roles(self, line: TextLine) -> list[tuple[str, float, float]] | None:
+        """Column roles if this line is a table header, else None."""
         r = self.rules
-        for idx, line in enumerate(lines):
-            roles = []
-            for cell in line.cells:
-                t = cell.text.strip()
-                if r.header_id.match(t):
-                    role = "id"
-                elif r.header_last.match(t):
-                    role = "last"
-                elif r.header_first.match(t):
-                    role = "first"
-                elif r.header_name.match(t):
-                    role = "name"
-                elif r.header_number.match(t):
-                    role = "number"
-                else:
-                    role = "other"
-                roles.append((role, cell.x0, cell.x1))
-            kinds = {role for role, _, _ in roles}
-            if "id" in kinds and ({"name"} & kinds or {"first", "last"} <= kinds):
-                return idx, roles
-        return None, None
+        roles = []
+        for cell in line.cells:
+            t = cell.text.strip()
+            if r.header_id.match(t):
+                role = "id"
+            elif r.header_last.match(t):
+                role = "last"
+            elif r.header_first.match(t):
+                role = "first"
+            elif r.header_name.match(t):
+                role = "name"
+            elif r.header_number.match(t):
+                role = "number"
+            else:
+                role = "other"
+            roles.append((role, cell.x0, cell.x1))
+        kinds = {role for role, _, _ in roles}
+        if "id" in kinds and ({"name"} & kinds or {"first", "last"} <= kinds):
+            return roles
+        return None
 
     def _segments(self, line: TextLine) -> list[_Segment]:
-        """Cells split around ID candidates; page-furniture cells removed."""
+        """Cells split around ID candidates; page-furniture and pronoun cells removed."""
         segs: list[_Segment] = []
         for cell in line.cells:
-            if self.rules.ignore_cell.match(cell.text.strip()):
+            text = cell.text.strip()
+            if self.rules.ignore_cell.match(text) or self.rules.aux_cell.match(text):
                 continue
             segs.extend(self._split_cell(cell))
         return segs
@@ -329,10 +436,8 @@ class TableRosterParser:
 
     # -- rows ---------------------------------------------------------------
 
-    def _read_page_rows(self, lines, header_idx, columns, page_no, diagnostics) -> list[_Row]:
-        r = self.rules
-        start = header_idx + 1 if header_idx is not None else 0
-        body = lines[start:]
+    def _read_run(self, run: _Run, page_no: int, diagnostics: list[str]) -> list[_Row]:
+        body, columns = run.lines, run.columns
         kinds = []  # "id" | "meta" | "skip" | "text"
         for line in body:
             segs = self._segments(line)
@@ -350,19 +455,43 @@ class TableRosterParser:
             return []
         # Without a header we can't tell where the table starts, so only
         # extend the table region upward when a header marks its top.
-        in_table = self._table_region(body, id_positions, extend_up=header_idx is not None)
+        in_table = self._table_region(body, id_positions, extend_up=run.has_header)
 
         rows: list[_Row] = []
         for i, (kind, segs) in enumerate(kinds):
             if kind == "id":
-                rows.extend(self._rows_from_segments(segs, columns, page_no))
+                new = self._rows_from_segments(segs, columns, page_no)
             elif kind == "text" and in_table[i]:
-                row = self._row_without_id(segs, columns, page_no)
-                if row:
-                    rows.append(row)
+                new = [row for row in [self._row_without_id(segs, columns, page_no)] if row]
+            else:
+                continue
+            for row in new:
+                self._finish_row(row, run.population)
+                rows.append(row)
         missing = sum(1 for row in rows if not row.w_number)
-        diagnostics.append(f"page {page_no}: {len(rows)} rows ({missing} without an ID)")
+        diagnostics.append(f"page {page_no}: {run.population}: {len(rows)} rows ({missing} without an ID)")
         return rows
+
+    def _finish_row(self, row: _Row, population: str) -> None:
+        """Clean-ups that apply only to recognized Current Students / Wait List rows."""
+        r = self.rules
+        row.population = population
+        # "7. Last, First": the roster's row number is not part of the name.
+        target = "name_text" if row.first is None and row.last is None else "last"
+        text = getattr(row, target) or ""
+        m = r.name_row_number.match(text)
+        if m:
+            setattr(row, target, text[m.end():])
+            if row.row_number is None:
+                row.row_number = int(m.group(1))
+        # Pronouns sharing the name's cell are not part of the name.
+        if row.name_text:
+            row.name_text = r.trailing_pronouns.sub("", row.name_text)
+        if row.first:
+            row.first = r.trailing_pronouns.sub("", row.first)
+        # Confirmed Los Rios rule: printed 7-digit Student ID == "W" + digits.
+        if r.printed_student_id.fullmatch(row.w_number):
+            row.w_number = "W" + row.w_number
 
     def _table_region(self, body: list[TextLine], id_positions: list[int], extend_up: bool) -> list[bool]:
         """Lines between/around ID rows that are spaced like table rows."""
@@ -460,10 +589,15 @@ class TableRosterParser:
 
     def _post_process(self, rows: list[_Row], roster: Roster, diagnostics: list[str]) -> None:
         r = self.rules
-        # Row numbering as an extra count check, when most rows are numbered.
-        numbers = [row.row_number for row in rows if row.row_number is not None]
-        if rows and len(numbers) >= 0.8 * len(rows) and min(numbers) == 1:
-            if roster.expected_count is None:
+        # Row numbering (per population) as an extra count check, when most rows are numbered.
+        for population in (CURRENT, WAITLIST):
+            group = [row for row in rows if row.population == population]
+            numbers = [row.row_number for row in group if row.row_number is not None]
+            if not group or len(numbers) < 0.8 * len(group) or min(numbers) != 1:
+                continue
+            if population == WAITLIST:
+                roster.expected_waitlist_count = max(numbers)
+            elif roster.expected_count is None:
                 roster.expected_count = max(numbers)
                 roster.expected_count_source = "row_numbers"
             elif max(numbers) != roster.expected_count:
@@ -490,6 +624,7 @@ class TableRosterParser:
             last_name=last,
             review_note=row.note or note,
             source_page=row.page,
+            status=row.population,
         )
         return student
 

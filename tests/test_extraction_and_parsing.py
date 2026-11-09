@@ -200,7 +200,9 @@ def test_missing_w_number_row_is_kept_and_blocks_output():
     assert "missing_w_number" in codes(result)
 
 
-@pytest.mark.parametrize("bad_id", ["W123456", "W12345678", "w1234567", "W 1234567", "1234567"])
+# A bare 7-digit ID is no longer malformed: real Los Rios rosters print W numbers
+# that way (user-confirmed rule), see test_real_roster_layout.py.
+@pytest.mark.parametrize("bad_id", ["W123456", "W12345678", "w1234567", "W 1234567"])
 def test_malformed_w_number_is_kept_verbatim_and_blocks(bad_id):
     rows = GOOD[:1] + [FakeRow(bad_id, "Alana", "Campbell")] + GOOD[1:]
     result = parse_spec(_variant(rows))

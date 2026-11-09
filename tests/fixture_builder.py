@@ -13,10 +13,11 @@ so tests can compare parser output against the known truth.
 from __future__ import annotations
 
 import io
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from reportlab.lib.pagesizes import letter
+from reportlab.lib.pagesizes import A3, letter
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
@@ -242,6 +243,166 @@ def _draw_table(c: canvas.Canvas, spec: FixtureSpec) -> None:
         c.showPage()
 
 
+# --- Sectioned layout (structure of the real Los Rios "Print Roster") ---------
+#
+# Reproduces only the STRUCTURE observed in a real roster (Nov 2026): A3 pages,
+# a labelled header block with class numbers inside "Meetings:", and
+# "Current Students" / "Wait List" / "Drops" / "Permission Numbers" sections
+# whose rows look like "N. Last, First M | (pronouns) | 1234567" (a 7-digit ID
+# printed without the W). Every person, ID and code below is INVENTED.
+
+@dataclass
+class SectionedSpec:
+    filename: str
+    course_title: str
+    meetings: list[str]                 # first line is labelled "Meetings:"
+    current: list[FakeRow]              # FakeRow.w_number = expected W number
+    waitlist: list[FakeRow]
+    drops: list[FakeRow]
+    permission: list[tuple[str, str]]   # (add code, optional name)
+    pronouns: dict[str, str] = field(default_factory=dict)  # w_number -> "(she/her)"
+    expected_section: str = ""
+    header_extra: list[tuple[str, str]] = field(default_factory=list)  # extra (label, value) lines
+
+
+def printed_id(w_number: str) -> str:
+    """How the roster prints an ID: valid W numbers lose their W; anything else is printed as given."""
+    return w_number[1:] if re.fullmatch(r"W\d{7}", w_number) else w_number
+
+
+SECTIONED = SectionedSpec(
+    filename="mock_roster_sections.pdf",
+    course_title="ANTH 310 Cultural Anthropology",
+    meetings=["MoWe 8:00 am - 9:15 am Room 101 LEC 20001", "MoWe 9:30 am - 10:45 am Room 102 LAB 20002"],
+    current=[
+        FakeRow("W3000001", "Esperanza L", "Abernathy"),
+        FakeRow("W3000002", "Gabriel", "Bautista-Reyes"),          # hyphenated
+        FakeRow("W3000003", "Isabella M.", "de la Cruz"),         # multi-part + initial with period
+        FakeRow("W3000004", "Bao", "Dang"),
+        FakeRow("W3000005", "Dawit K", "Fofanah"),
+        FakeRow("W3000006", "Samir", "Hakimi"),
+        FakeRow("W3000007", "Zofia A", "Kowalczyk"),
+        FakeRow("W3000008", "Mary Ann", "Lee"),                   # two-word given name
+        FakeRow("W3000009", "Kai T", "Moua"),
+        FakeRow("W3000010", "Sean P", "O'Neil"),                  # apostrophe
+        FakeRow("W3000011", "José Luis", "Peña"),                 # accents
+        FakeRow("W3000012", "Pieter J", "Van Der Berg"),          # multi-part
+        FakeRow("W3000013", "Khamphoui", "Vongphachanh-Rasavong"),
+        FakeRow("W3000014", "Yer", "Xiong"),
+    ],
+    waitlist=[
+        FakeRow("W3100001", "Rosa M", "Castellanos"),
+        FakeRow("W3100002", "Kenji", "Nakamura"),
+        FakeRow("W3100003", "Olivia R", "St. James"),
+    ],
+    drops=[
+        FakeRow("W3200001", "Wesley J", "Ellis"),
+        FakeRow("W3200002", "Jasmine", "Gill"),
+        FakeRow("W3200003", "Tatiana", "Ivanova"),
+        FakeRow("W3200004", "Oscar L", "Jaramillo"),
+        FakeRow("W3200005", "Priya", "Rahimi"),
+        FakeRow("W3200006", "Leilani", "Tran"),
+        FakeRow("W3200007", "Uriel", "Udeh"),        # these continue on page 2, under no new heading
+        FakeRow("W3200008", "Ximena", "Zamora"),
+    ],
+    # Add codes; one is deliberately 7 digits (must never become a W number).
+    permission=[("410201", "Dang, Bao"), ("410202", "Xiong, Yer"), ("410203", ""), ("3999999", ""), ("410205", "")],
+    pronouns={"W3000001": "(she/her/hers)", "W3000003": "(she/her)", "W3000006": "(he/him/his)",
+              "W3000009": "(they/them/theirs)", "W3100001": "(she/her)", "W3200002": "(she/her)"},
+    expected_section="20001",
+)
+
+_PITCH = 24.7  # row spacing observed in the real layout
+
+
+def build_sectioned_pdf(spec: SectionedSpec) -> bytes:
+    _fonts()
+    width, height = A3
+    buf = io.BytesIO()
+    c = canvas.Canvas(buf, pagesize=A3, invariant=1)
+    c.setTitle("FAKE roster fixture")
+    pos = {"y": height - 46}
+
+    def need(space: float) -> None:  # continue on a new page (no repeated headers) if needed
+        if pos["y"] - space < 50:
+            c.showPage()
+            pos["y"] = height - 46
+
+    def put(x: float, text: str, font: str = "Fx", size: float = 10.5) -> None:
+        c.setFont(font, size)
+        c.drawString(x, pos["y"], text)
+
+    put(60, "Example Community College", "Fx-Bold", 11)
+    pos["y"] -= 46
+    header = [("Course:", spec.course_title), ("Professor:", "Staff, Example"), ("Meetings:", spec.meetings[0])]
+    header += [("", m) for m in spec.meetings[1:]]
+    header += [("Term:", "Fall 2026 | Full Semester | August 24, 2026 - December 18, 2026"),
+               ("Drop Date:", "November 13, 2026"), ("Units:", "3.00"), ("Type:", "Grade / Enrollment Roster")]
+    header += spec.header_extra
+    for label, value in header:
+        if label:
+            put(60, label, "Fx-Bold", 10)
+        put(205, value, "Fx", 10)
+        pos["y"] -= 27 if label else 21
+
+    def heading(title: str) -> None:
+        need(90)
+        pos["y"] -= 26
+        put(60, title, "Fx-Bold", 11)
+        pos["y"] -= 36
+
+    def table_header() -> None:
+        put(75, "Student Name", "Fx-Bold", 10)
+        put(470, "Student ID", "Fx-Bold", 10)
+        pos["y"] -= 24
+
+    def student_rows(rows: list[FakeRow], extra=None) -> None:
+        for n, row in enumerate(rows, start=1):
+            need(_PITCH)
+            put(75, f"{n}. {row.printed_name('last_first')}", "Fx", 11)
+            if row.w_number in spec.pronouns:
+                put(245, spec.pronouns[row.w_number], "Fx", 10)
+            if row.w_number:
+                put(480, printed_id(row.w_number), "Fx", 11)
+            if extra:
+                put(555, extra(n), "Fx", 10.5)
+            else:
+                c.setLineWidth(0.5)
+                c.line(555, pos["y"] - 3, 780, pos["y"] - 3)
+            pos["y"] -= _PITCH
+
+    heading("Current Students")
+    table_header()
+    student_rows(spec.current)
+
+    heading("Wait List")
+    if spec.waitlist:
+        table_header()
+        student_rows(spec.waitlist)
+    else:
+        put(300, "No Waitlist Students", "Fx-Bold", 10)
+        pos["y"] -= 30
+
+    heading("Drops")
+    table_header()
+    student_rows(spec.drops, extra=lambda n: f"Oct {n:02d}, 2026 ({'Withdrawn' if n % 2 else 'Dropped'})")
+
+    heading("Permission Numbers")
+    for n, (code, name) in enumerate(spec.permission, start=1):
+        need(_PITCH)
+        put(62, f"{n}. {code} {name}".strip(), "Fx", 11)
+        c.setLineWidth(0.5)
+        c.line(365, pos["y"] - 3, 780, pos["y"] - 3)
+        pos["y"] -= _PITCH
+
+    need(60)
+    pos["y"] -= 40
+    c.setFont("Fx", 7)
+    c.drawCentredString(width / 2, pos["y"], "Class rosters were last updated on Oct 01, 2026 at 07:00:00 AM.")
+    c.save()
+    return buf.getvalue()
+
+
 def build_image_only_pdf() -> bytes:
     """A PDF with graphics but no text layer (like a scan)."""
     buf = io.BytesIO()
@@ -259,4 +420,7 @@ def write_fixtures(directory: Path = FIXTURE_DIR) -> list[Path]:
         path = directory / spec.filename
         path.write_bytes(build_pdf(spec))
         paths.append(path)
+    path = directory / SECTIONED.filename
+    path.write_bytes(build_sectioned_pdf(SECTIONED))
+    paths.append(path)
     return paths

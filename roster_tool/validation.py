@@ -87,14 +87,26 @@ def validate_roster(roster: Roster) -> list[ValidationIssue]:
                     ERROR, "duplicate_w_number", f"Rows {listed} have the same W number.", r, "w_number",
                 ))
 
-    if roster.expected_count is not None and roster.expected_count != len(students):
+    # Counts are checked per population. `field` names the roster attribute
+    # holding the expectation (the UI lets the employee accept the list as is).
+    n_current = len(roster.current_students)
+    if roster.expected_count is not None and roster.expected_count != n_current:
         if roster.expected_count_source == "row_numbers":
             basis = f"The PDF numbers its rows up to {roster.expected_count}"
         else:
             basis = f"The PDF says {roster.expected_count} students are enrolled"
         issues.append(ValidationIssue(
             ERROR, "count_mismatch",
-            f"{basis}, but {len(students)} student rows were found. There may be a parsing problem.",
+            f"{basis}, but {n_current} student rows were found. There may be a parsing problem.",
+            field="expected_count",
+        ))
+    n_wait = len(roster.waitlist_students)
+    if roster.expected_waitlist_count is not None and roster.expected_waitlist_count != n_wait:
+        issues.append(ValidationIssue(
+            ERROR, "count_mismatch",
+            f"The PDF numbers its Wait List rows up to {roster.expected_waitlist_count}, but {n_wait} "
+            "wait-list rows were found. There may be a parsing problem.",
+            field="expected_waitlist_count",
         ))
 
     if not roster.course_title:

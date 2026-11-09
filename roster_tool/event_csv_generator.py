@@ -4,7 +4,10 @@
     W1234567@apps.losrios.edu,Hewad,Ahmadzai,W1234567,W1234567
 
 SSO ID == Student ID == W number, exactly as on the roster (leading W kept).
-The header and field rules are locked down by tests/test_event_csv.py.
+Current Students and Wait List students are both invited, as ordinary rows
+(no section, status column or other distinction). Dropped students are never
+in the roster model. The header and field rules are locked down by
+tests/test_event_csv.py.
 """
 
 from __future__ import annotations
@@ -22,9 +25,10 @@ ENCODING = "utf-8"        # no byte-order mark: a BOM would make the first heade
 
 
 def build_rows(roster: Roster) -> list[tuple[str, str, str, str, str]]:
+    invited = roster.current_students + roster.waitlist_students
     return [
         (f"{s.w_number}@{EMAIL_DOMAIN}", s.first_name, s.last_name, s.w_number, s.w_number)
-        for s in roster.students
+        for s in invited
     ]
 
 

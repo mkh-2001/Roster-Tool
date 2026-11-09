@@ -14,6 +14,10 @@ Layout
   paginates. Text is never shrunk to cram students in.
 * Long names shrink a little, then wrap. Names are never truncated, and no
   student is ever dropped.
+* When the roster has a Wait List, every day column lists "Current Students"
+  and then a separately labelled "Wait List" group. Without waitlisted
+  students no label or space is added. A group that continues in another
+  column/page is labelled "(cont.)".
 
 Print and "Download PDF" both use this same PDF, so they always match.
 """
@@ -32,8 +36,12 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
 
-from .models import Roster, clean_text
+from .models import Roster, Student, clean_text
 from .validation import OutputBlockedError, blocking_errors, validate_roster
+
+CURRENT_LABEL = "Current Students"
+WAITLIST_LABEL = "Wait List"
+LABEL_UNITS = 1.4  # a group label takes this many row heights
 
 DAY_ORDER = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
 
@@ -120,12 +128,26 @@ class RowFit:
 
 
 @dataclass
+class LayoutItem:
+    """One entry of a day column: a student row, or a group label (student is None)."""
+
+    student: Student | None
+    fit: RowFit | None = None
+    label: str = ""
+
+    @property
+    def units(self) -> float:
+        return self.fit.units if self.student is not None else LABEL_UNITS
+
+
+@dataclass
 class ColumnPlan:
     day: str
     continued: bool
-    start: int  # student slice [start, end)
+    start: int  # item slice [start, end)
     end: int
     show_date: bool = True  # False for a same-day continuation on the same page
+    group_label: str | None = None  # e.g. "Wait List (cont.)" when a group continues here
 
 
 @dataclass
@@ -133,7 +155,11 @@ class PagePlan:
     columns: list[ColumnPlan]
     col_width: float
     pitch: float
-    fits: list[RowFit] = field(repr=False)
+    items: list[LayoutItem] = field(repr=False)
+
+    @property
+    def fits(self) -> list[RowFit | None]:
+        return [item.fit for item in self.items]
 
 
 def _col_width(n_cols: int) -> float:
@@ -177,22 +203,49 @@ def _name_width(col_width: float, id_width: float) -> float:
     return col_width - BOX - 4 - id_width - 6
 
 
-def _pack(units: list[float], capacity: float) -> list[tuple[int, int]]:
-    """Greedy: consecutive slices whose units fit within capacity (>= 1 row each)."""
+def _column_items(roster: Roster, name_width: float) -> list[LayoutItem]:
+    """The entries every day column shows: Current Students, then a labelled Wait List."""
+    def rows(students):
+        return [LayoutItem(s, fit_name(s.display_name, name_width)) for s in students]
+
+    waitlist = roster.waitlist_students
+    if not waitlist:
+        return rows(roster.current_students)
+    return ([LayoutItem(None, label=CURRENT_LABEL)] + rows(roster.current_students)
+            + [LayoutItem(None, label=WAITLIST_LABEL)] + rows(waitlist))
+
+
+def _cont_label(items: list[LayoutItem], start: int) -> str | None:
+    """'<group> (cont.)' if a column starting at `start` begins inside a labelled group."""
+    for i in range(start, -1, -1):
+        if items[i].student is None:
+            return None if i == start else f"{items[i].label} (cont.)"
+    return None
+
+
+def _pack(items: list[LayoutItem], capacity: float) -> list[tuple[int, int]]:
+    """Greedy: consecutive slices whose units fit within capacity (>= 1 item each).
+
+    A group label is never left as the last entry of a slice, and a slice that
+    starts inside a labelled group reserves room for its "(cont.)" label.
+    """
     slices, start, used = [], 0, 0.0
-    for i, u in enumerate(units):
-        if i > start and used + u > capacity + 1e-9:
+    for i, item in enumerate(items):
+        need = item.units
+        if item.student is None and i + 1 < len(items):
+            need += items[i + 1].units  # keep the label with its first row
+        if i > start and used + need > capacity + 1e-9:
             slices.append((start, i))
-            start, used = i, 0.0
-        used += u
-    slices.append((start, len(units)))
+            start, used = i, (LABEL_UNITS if _cont_label(items, i) else 0.0)
+        used += item.units
+    slices.append((start, len(items)))
     return slices
 
 
-def _best_pitch(units: list[float], avail: float, slots_per_page: int) -> tuple[float, list[tuple[int, int]]]:
+def _best_pitch(items: list[LayoutItem], avail: float, slots_per_page: int) -> tuple[float, list[tuple[int, int]]]:
     """Fewest pages at MIN_PITCH, then the most comfortable pitch for that page count."""
     def pages(pitch: float) -> tuple[int, list[tuple[int, int]]]:
-        slices = _pack(units, avail / pitch)
+        slices = _pack(items, avail / pitch)
         return math.ceil(len(slices) / slots_per_page), slices
 
     target, _ = pages(MIN_PITCH)
@@ -208,7 +261,6 @@ def _best_pitch(units: list[float], avail: float, slots_per_page: int) -> tuple[
 def plan_layout(roster: Roster, days: list[str]) -> list[PagePlan]:
     ensure_fonts()
     days = normalize_days(days)
-    names = [s.display_name for s in roster.students]
     id_w = _id_width(roster)
     avail = PAGE_H - 2 * MARGIN - HEADER_H - COLUMN_HEAD_H
     plans: list[PagePlan] = []
@@ -218,25 +270,26 @@ def plan_layout(roster: Roster, days: list[str]) -> list[PagePlan]:
             day = group[0]
             # One full-width column if everyone fits on one page...
             width = _col_width(1)
-            fits = [fit_name(n, _name_width(width, id_w)) for n in names]
-            units = [f.units for f in fits]
-            if sum(units) * MIN_PITCH <= avail:
-                pitch, _ = _best_pitch(units, avail, 1)
-                plans.append(PagePlan([ColumnPlan(day, False, 0, len(names))], width, pitch, fits))
+            items = _column_items(roster, _name_width(width, id_w))
+            if sum(item.units for item in items) * MIN_PITCH <= avail:
+                pitch, _ = _best_pitch(items, avail, 1)
+                plans.append(PagePlan([ColumnPlan(day, False, 0, len(items))], width, pitch, items))
                 continue
             # ...otherwise the list snakes into a second column on the same page.
             width = _col_width(2)
-            fits = [fit_name(n, _name_width(width, id_w)) for n in names]
-            pitch, slices = _best_pitch([f.units for f in fits], avail, 2)
+            items = _column_items(roster, _name_width(width, id_w))
+            pitch, slices = _best_pitch(items, avail, 2)
             for p in range(0, len(slices), 2):
-                cols = [ColumnPlan(day, k > 0, a, b, show_date=(k == p)) for k, (a, b) in enumerate(slices[p:p + 2], start=p)]
-                plans.append(PagePlan(cols, width, pitch, fits))
+                cols = [ColumnPlan(day, k > 0, a, b, show_date=(k == p), group_label=_cont_label(items, a))
+                        for k, (a, b) in enumerate(slices[p:p + 2], start=p)]
+                plans.append(PagePlan(cols, width, pitch, items))
         else:
             width = _col_width(len(group))
-            fits = [fit_name(n, _name_width(width, id_w)) for n in names]
-            pitch, slices = _best_pitch([f.units for f in fits], avail, 1)
+            items = _column_items(roster, _name_width(width, id_w))
+            pitch, slices = _best_pitch(items, avail, 1)
             for k, (a, b) in enumerate(slices):
-                plans.append(PagePlan([ColumnPlan(d, k > 0, a, b) for d in group], width, pitch, fits))
+                cols = [ColumnPlan(d, k > 0, a, b, group_label=_cont_label(items, a)) for d in group]
+                plans.append(PagePlan(cols, width, pitch, items))
     return plans
 
 
@@ -350,11 +403,17 @@ def _draw_column(c: canvas.Canvas, roster: Roster, plan: PagePlan, col: ColumnPl
     # Rows
     y = top - COLUMN_HEAD_H
     name_x = x + BOX + 4 + id_w + 6
+    if col.group_label:
+        y = _draw_group_label(c, col.group_label, x, y, w, plan.pitch)
     for i in range(col.start, col.end):
-        fit = plan.fits[i]
+        item = plan.items[i]
+        if item.student is None:
+            y = _draw_group_label(c, item.label, x, y, w, plan.pitch)
+            continue
+        fit = item.fit
         row_h = plan.pitch * fit.units
         baseline = y - plan.pitch / 2 - 3
-        s = roster.students[i]
+        s = item.student
 
         c.setLineWidth(0.8)
         c.setStrokeGray(0)
@@ -370,3 +429,16 @@ def _draw_column(c: canvas.Canvas, roster: Roster, plan: PagePlan, col: ColumnPl
         c.setStrokeGray(0.75)
         c.line(x, y + 0.5, x + w, y + 0.5)
         c.setStrokeGray(0)
+
+
+def _draw_group_label(c: canvas.Canvas, text: str, x: float, y: float, w: float, pitch: float) -> float:
+    """Bold group label ("Current Students", "Wait List") with a rule; returns the new y."""
+    height = LABEL_UNITS * pitch
+    baseline = y - height + 5
+    c.setFillGray(0)
+    c.setFont(FONT_BOLD, 9.5)
+    c.drawString(x, baseline, text)
+    c.setLineWidth(0.6)
+    c.setStrokeGray(0)
+    c.line(x, baseline - 3, x + w, baseline - 3)
+    return y - height

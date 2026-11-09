@@ -9,9 +9,10 @@ and it produces either:
 Everything runs on the local computer. There is no cloud, no API calls, no
 telemetry, no database and no internet requirement.
 
-> **Status:** the core workflow is complete and tested, but **only against fake
-> roster PDFs we generated**. Before relying on it, validate the parser against
-> real roster PDFs using [REAL_ROSTER_INTEGRATION.md](REAL_ROSTER_INTEGRATION.md).
+> **Status:** the core workflow is complete and tested. The parser has been
+> adapted to and verified against **one** real Los Rios "Print Roster" PDF; more
+> real rosters (especially one with waitlisted students) should be validated
+> using [REAL_ROSTER_INTEGRATION.md](REAL_ROSTER_INTEGRATION.md).
 > Desktop packaging is planned in [PACKAGING.md](PACKAGING.md).
 
 ## Run it (development)
@@ -45,6 +46,10 @@ roster PDF ──► pdf_extractor ──► roster_parser ──► models.Rost
   sends it back for each output. The server validates it again every time.
 * **Only `roster_parser.py` knows the PDF layout.** Supporting the real roster
   should mean changing that file (mostly `ParseRules`) and nothing else.
+* **Two student populations.** Each student is tagged **Current Students** or
+  **Wait List** (`Student.status`). Dropped students and permission/add codes
+  never enter the roster. All roster information comes from the PDF contents;
+  the filename is never used.
 * **Errors block output and are never silently fixed.** Missing, malformed or
   duplicate W numbers, empty names, and a student count that disagrees with
   the PDF all block output until corrected. Uncertain items (ambiguous name
@@ -84,9 +89,14 @@ Email,First Name,Last Name,SSO ID,Student ID
 W1234567@apps.losrios.edu,Hewad,Ahmadzai,W1234567,W1234567
 ```
 
+The CSV contains Current Students followed by Wait List students as ordinary
+rows, with no status column or other distinction. Dropped students are never included.
+
 **Help sheet:** course title, section and tutor name at the top. Then one
 column per selected day, each listing `☐ W1234567 Last, First` for every
-student, with a `Date: ____` line.
+Current Student, with a `Date: ____` line. If the roster has waitlisted
+students, every day column also has a labelled **Wait List** group below the
+Current Students. If it doesn't, no space is used for one.
 * Margins are 0.4″.
 * There are at most 3 day-columns per page. With 4 or more days, the days are
   split across pages (4 days → 2+2, 5 → 3+2).
@@ -118,7 +128,9 @@ The target is ≤ 2000 ms. Measure on staff hardware with `scripts/benchmark.py`
 
 ## Known limitations
 
-* Only tested on fake rosters; see REAL_ROSTER_INTEGRATION.md.
+* Verified against one real roster layout so far; see REAL_ROSTER_INTEGRATION.md
+  for what real data has and hasn't covered yet.
+* Middle initials are kept as part of First Name for now.
 * Scanned (image-only) PDFs are refused. There is no OCR, by design.
 * A "First Last" roster cannot reliably split names with 3 or more parts, so those rows are flagged for review.
 * Names that wrap onto a second line in the source PDF surface as rows needing

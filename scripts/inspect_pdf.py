@@ -50,16 +50,18 @@ def main() -> int:
     print(f"  course title : {roster.course_title!r}")
     print(f"  section      : {roster.section!r}")
     print(f"  uncertain    : {roster.uncertain_fields}")
-    print(f"  expected     : {roster.expected_count} ({roster.expected_count_source})")
-    print(f"  students     : {len(roster.students)}")
+    print(f"  expected     : {roster.expected_count} ({roster.expected_count_source}); "
+          f"wait list: {roster.expected_waitlist_count}")
+    print(f"  students     : {len(roster.current_students)} current + {len(roster.waitlist_students)} wait list")
     print(f"  issues       : {sum(i.severity == 'error' for i in issues)} error(s), "
           f"{sum(i.severity == 'warning' for i in issues)} warning(s)")
     for i in issues:
         print(f"    [{i.severity}] {i.code}: {i.message}")
     if args.students:
-        print("\n# Students  (row | W number | last | first | page | note)")
+        print("\n# Students  (row | W number | last | first | page | list | note)")
         for n, s in enumerate(roster.students, 1):
-            print(f"  {n:>3} | {s.w_number:<10} | {s.last_name} | {s.first_name} | p{s.source_page} | {s.review_note or ''}")
+            print(f"  {n:>3} | {s.w_number:<10} | {s.last_name} | {s.first_name} | p{s.source_page} | "
+                  f"{s.status} | {s.review_note or ''}")
     return 0
 
 

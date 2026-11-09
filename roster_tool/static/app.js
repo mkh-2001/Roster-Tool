@@ -112,14 +112,16 @@
 
   function renderSummary() {
     const r = state.roster;
-    $("student-count").textContent = String(r.students.length);
-    let note = "";
+    const waitlisted = r.students.filter((s) => s.status === "waitlist").length;
+    $("student-count").textContent = String(r.students.length - waitlisted);
+    const notes = [];
     if (r.expected_count !== null) {
-      note = r.expected_count_source === "row_numbers"
+      notes.push(r.expected_count_source === "row_numbers"
         ? `PDF rows are numbered 1–${r.expected_count}`
-        : `PDF lists ${r.expected_count} enrolled`;
+        : `PDF lists ${r.expected_count} enrolled`);
     }
-    $("expected-note").textContent = note;
+    if (waitlisted) notes.push(`+ ${waitlisted} on the wait list`);
+    $("expected-note").textContent = notes.join(" · ");
     markField("course-title", "course-hint", "course_title");
     markField("section", "section-hint", "section");
   }
@@ -164,9 +166,13 @@
         li.append(linkButton("Show row", () => showRow(issue.row)));
       }
       if (issue.code === "count_mismatch") {
-        li.append(linkButton(`I've checked: the list of ${state.roster.students.length} is correct`, () => {
-          state.roster.expected_count = null;
-          state.roster.expected_count_source = null;
+        li.append(linkButton("I've checked: this list is correct", () => {
+          if (issue.field === "expected_waitlist_count") {
+            state.roster.expected_waitlist_count = null;
+          } else {
+            state.roster.expected_count = null;
+            state.roster.expected_count_source = null;
+          }
           rosterChanged(0);
         }));
       }
@@ -232,6 +238,10 @@
       }
       tr.append(td);
     }
+    const list = document.createElement("td");
+    list.className = "list";
+    list.textContent = s.status === "waitlist" ? "Wait List" : "Current";
+    tr.append(list);
     const act = document.createElement("td");
     act.className = "act";
     const remove = document.createElement("button");
@@ -318,6 +328,7 @@
   function addStudent() {
     state.roster.students.push({
       w_number: "", first_name: "", last_name: "", display_name: "", review_note: null, source_page: null,
+      status: "current",
     });
     renderStudents();
     rosterChanged(0);

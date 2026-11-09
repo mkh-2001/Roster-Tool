@@ -1,10 +1,12 @@
 # Real Roster Integration
 
-**Status:** the parser has only been tested against FAKE PDFs that we generated
-ourselves (`tests/fixtures/`). Those passing tests show that the architecture
-works. They do **not** show that the parser can read the real roster system's
-PDFs. Follow this guide the first time a real roster is available, and again
-whenever the roster system changes its layout.
+**Status:** adapted to the first real Los Rios roster (a 2-page "Print Roster"
+PDF, Nov 2026; see [Real roster findings](#real-roster-findings-2026-11-09)).
+Every Current Student in that roster was verified against the source PDF. Its
+Wait List was empty, so populated Wait List parsing is covered only by the
+sanitized fixture until a real roster with waitlisted students is available.
+Follow this guide again for each new roster layout, and whenever the roster
+system changes.
 
 > **Never commit real student data.** Real PDFs, text dumps and expected
 > results belong in `private_rosters/` (git-ignored) on a staff computer only.
@@ -43,6 +45,39 @@ Two constraints also apply:
 
 * **No OCR** unless a real source roster shows that it is actually required (i.e. it has no usable text layer).
 * **No packaging (Phase 10)** until this validation is complete.
+
+## Real roster findings (2026-11-09)
+
+Only the structure is recorded here; no student data.
+
+* **Text layer:** a clean digital text layer, so no OCR is needed. Pages are A3 size.
+* **Header block:** `Course:`, `Professor:`, `Meetings:` (one or more meeting lines, each ending in a component code and a class number such as `LEC 12345` or `LAB 12346`), `Term:`, `Drop Date:`, `Units:`, `Type:`.
+* **Sections:** `Current Students`, `Wait List` (possibly just "No Waitlist Students"), `Drops` (which may continue onto the next page with no new heading), and `Permission Numbers`.
+* **Student rows:** `N. Last, First M` in one cell, then an optional pronoun cell such as `(she/her)`, then the Student ID. Rows are numbered 1..n per section, there is no stated count, and no rows wrap.
+* **Student ID:** printed as **7 digits without the `W`**. The user confirmed that printed `1234567` is Los Rios W number `W1234567`.
+* **Names:** always `Last, First`. They include middle initials (`A` or `A.`), multi-part and hyphenated surnames, and two-word given names.
+
+Rules added for this layout (all in `roster_parser.py`):
+
+| Behaviour | Rule |
+|---|---|
+| Only **Current Students** and **Wait List** rows are students; **Drops** and **Permission Numbers** are skipped without extracting anything. In a document with section headings, lines before the first heading are not students. | `section_headings` |
+| Each student keeps its population (`Student.status` = `current` / `waitlist`). | model |
+| Section = first class number in the `Meetings:` block (an explicit `Section:` label still wins). The **filename is never used**: the parser only receives the PDF bytes. | `meetings_labels`, `class_number` |
+| `7. Last, First` loses its row number, and the number feeds the per-section count check. | `name_row_number` |
+| Pronouns are never part of a name (a separate parenthesised cell, or a trailing `(x/y)` in the name cell). | `aux_cell`, `trailing_pronouns` |
+| A recognised Current Students / Wait List Student ID of exactly 7 digits becomes `W` + digits. Nothing else is converted, and malformed IDs are still blocked. | `printed_student_id` |
+| Middle initials are kept in First Name (not removed until there is more evidence). | (no rule) |
+
+Not yet covered by real data:
+* a populated Wait List
+* Current Students spanning pages
+* apostrophes, accents or suffixes in names
+* rows that wrap onto two lines
+* other Los Rios colleges' roster layouts
+
+The sanitized fixture `tests/fixtures/mock_roster_sections.pdf` and
+`tests/test_real_roster_layout.py` cover the first three.
 
 ---
 
@@ -93,6 +128,10 @@ Every layout-specific choice is a field on `ParseRules` (`roster_parser.py`):
 | `ignore_cell` | `Page x of y`, `Printed …`, `Class Roster…` | Other page furniture appears in the table. |
 | `header_id`, `header_name`, `header_last`, `header_first`, `header_number` | Typical header words | The real column headers differ. |
 | `table_gap_pitches` | 1.6 | Rows are unevenly spaced. |
+| `section_headings` | Current Students / Wait List (read); Drops / Permission Numbers (skipped) | Sections are named differently or new sections appear. |
+| `meetings_labels`, `class_number` | `Meetings:` block; component code plus a 5-digit number | Class numbers are printed elsewhere or in another format. |
+| `printed_student_id` | 7 digits (confirmed Los Rios rule) | IDs are printed differently. |
+| `name_row_number`, `aux_cell`, `trailing_pronouns` | `7. ` prefix; `( … )` cells; trailing `(x/y)` | Row numbers or pronouns appear in another form. |
 
 **If small rule changes are enough**, edit the defaults in `ParseRules`.
 

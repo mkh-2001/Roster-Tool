@@ -18,6 +18,7 @@ def test_roster_to_dict_matches_spec_shape():
     assert d["students"][0] == {
         "w_number": "W1234567", "first_name": "Hewad", "last_name": "Ahmadzai",
         "display_name": "Ahmadzai, Hewad", "review_note": None, "source_page": None,
+        "status": "current",
     }
 
 

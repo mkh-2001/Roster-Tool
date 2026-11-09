@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="roster-token" content="__ROSTER_TOKEN__">
+  <title>Roster Tool</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%231f5fae'/%3E%3Cpath d='M4 8.5l2.5 2.5L12 5' stroke='white' stroke-width='2' fill='none'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/static/styles.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <h1>Roster Tool</h1>
+    <span class="offline-note">Works offline &middot; student data stays on this computer</span>
+  </header>
+
+  <main>
+    <!-- 1. Upload -->
+    <section id="upload" class="card">
+      <div id="dropzone" class="dropzone">
+        <h2>Upload roster PDF</h2>
+        <p class="muted">Drag the class roster PDF here, or</p>
+        <label class="button primary file-button">
+          Choose PDF
+          <input type="file" id="file-input" accept="application/pdf,.pdf">
+        </label>
+        <p id="upload-status" class="status" role="status" aria-live="polite"></p>
+      </div>
+    </section>
+
+    <!-- 2. Roster summary and review -->
+    <section id="summary" class="card" hidden>
+      <div class="card-head">
+        <h2>Roster</h2>
+        <span id="file-name" class="muted file-name"></span>
+        <button id="replace-btn" type="button" class="link">Upload a different PDF</button>
+      </div>
+
+      <div class="summary-grid">
+        <label class="field">
+          <span>Course</span>
+          <input id="course-title" type="text" maxlength="300" autocomplete="off">
+          <small class="hint" id="course-hint"></small>
+        </label>
+        <label class="field">
+          <span>Section</span>
+          <input id="section" type="text" maxlength="40" autocomplete="off">
+          <small class="hint" id="section-hint"></small>
+        </label>
+        <div class="stat">
+          <span>Students found</span>
+          <strong id="student-count">0</strong>
+          <small id="expected-note" class="muted"></small>
+        </div>
+      </div>
+
+      <div id="issues" class="issues" hidden>
+        <ul id="issue-list"></ul>
+      </div>
+
+      <details id="student-details">
+        <summary>Review / edit students</summary>
+        <div class="table-wrap students-wrap">
+          <table class="students">
+            <thead>
+              <tr><th>#</th><th>W Number</th><th>Last Name</th><th>First Name</th><th><span class="sr">Actions</span></th></tr>
+            </thead>
+            <tbody id="student-rows"></tbody>
+          </table>
+        </div>
+        <button id="add-student" type="button" class="button small">Add student</button>
+        <p class="muted small-print">Edits apply only to this session and are not saved anywhere.</p>
+      </details>
+    </section>
+
+    <!-- 3. Outputs -->
+    <section id="tools" class="card" hidden>
+      <div class="tabs" role="tablist">
+        <button type="button" role="tab" id="tab-help" aria-selected="true" aria-controls="panel-help">Help Sheet</button>
+        <button type="button" role="tab" id="tab-csv" aria-selected="false" aria-controls="panel-csv">Event CSV</button>
+      </div>
+
+      <p id="blocked" class="blocked" hidden></p>
+
+      <div id="panel-help" role="tabpanel" aria-labelledby="tab-help">
+        <div class="help-form">
+          <label class="field tutor">
+            <span>Tutor name</span>
+            <input id="tutor-name" type="text" maxlength="100" autocomplete="off" required>
+          </label>
+          <fieldset class="days">
+            <legend>Course meets</legend>
+            <label><input type="checkbox" name="day" value="Monday"> Mon</label>
+            <label><input type="checkbox" name="day" value="Tuesday"> Tue</label>
+            <label><input type="checkbox" name="day" value="Wednesday"> Wed</label>
+            <label><input type="checkbox" name="day" value="Thursday"> Thu</label>
+            <label><input type="checkbox" name="day" value="Friday"> Fri</label>
+            <label><input type="checkbox" name="day" value="Saturday"> Sat</label>
+            <label><input type="checkbox" name="day" value="Sunday"> Sun</label>
+          </fieldset>
+        </div>
+        <div class="actions">
+          <button id="generate-help" type="button" class="button primary">Generate Help Sheet</button>
+          <span id="help-status" class="status" role="status" aria-live="polite"></span>
+        </div>
+        <div id="help-output" hidden>
+          <div class="actions">
+            <button id="print-help" type="button" class="button primary">Print</button>
+            <button id="download-help" type="button" class="button">Download PDF</button>
+            <span id="help-meta" class="muted"></span>
+          </div>
+          <iframe id="help-preview" title="Help sheet preview"></iframe>
+        </div>
+      </div>
+
+      <div id="panel-csv" role="tabpanel" aria-labelledby="tab-csv" hidden>
+        <div class="actions">
+          <button id="download-csv" type="button" class="button primary">Download CSV</button>
+          <span id="csv-meta" class="muted"></span>
+        </div>
+        <div class="table-wrap csv-wrap">
+          <table class="csv-preview">
+            <thead><tr id="csv-head"></tr></thead>
+            <tbody id="csv-rows"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

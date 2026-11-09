@@ -1,0 +1,45 @@
+# ---------------------------------------------------------------------------
+# STUDENT DATA - never commit
+# ---------------------------------------------------------------------------
+# Real rosters (and their hand-written expected results) live only here:
+private_rosters/
+*.real.pdf
+# Any PDF except the FAKE test fixtures (real rosters, generated help sheets):
+*.pdf
+!tests/fixtures/*.pdf
+# Generated Event CSVs and any spreadsheet exports:
+*.csv
+*.tsv
+*.xls
+*.xlsx
+
+# ---------------------------------------------------------------------------
+# Python / build artifacts
+# ---------------------------------------------------------------------------
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+build/
+dist/
+
+# ---------------------------------------------------------------------------
+# OS, editor and temporary files
+# ---------------------------------------------------------------------------
+.DS_Store
+._*
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+.claude/settings.local.json
+*.swp
+*~
+*.tmp
+*.temp
+*.log
+.~lock.*

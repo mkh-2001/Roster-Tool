@@ -1,0 +1,3 @@
+# Runtime dependencies (bundled into the packaged app; no network needed at runtime)
+pypdfium2==5.15.2
+reportlab==5.1.0

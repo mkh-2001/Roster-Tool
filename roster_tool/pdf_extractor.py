@@ -25,6 +25,8 @@ from dataclasses import dataclass, field
 import pypdfium2 as pdfium
 import pypdfium2.raw as pdfium_c
 
+from .errors import RosterInputError
+
 MAX_PDF_BYTES = 20 * 1024 * 1024
 MAX_PAGES = 200
 
@@ -39,13 +41,8 @@ _PDFIUM_LOCK = threading.Lock()
 
 # --- Errors (messages are safe to show to the employee) --------------------
 
-class PdfExtractionError(Exception):
+class PdfExtractionError(RosterInputError):
     user_message = "This PDF could not be read."
-
-    def __init__(self, user_message: str | None = None):
-        if user_message:
-            self.user_message = user_message
-        super().__init__(self.user_message)
 
 
 class NotAPdfError(PdfExtractionError):

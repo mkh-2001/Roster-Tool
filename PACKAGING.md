@@ -12,7 +12,8 @@ to IT requirements.
 **PyInstaller, one-folder build (`--onedir`)**, per operating system.
 
 * It bundles Python, `pypdfium2` (with its native PDFium library), `reportlab`,
-  the UI files and the fonts. No Python installation is needed on staff computers.
+  `openpyxl` (pure Python, for .xlsx input), the UI files and the fonts. No
+  Python installation is needed on staff computers.
 * **One-folder rather than one-file.** One-file builds unpack themselves into a
   temp folder on every launch. That makes startup slower, can leave files
   behind if the app is killed, and triggers antivirus false positives more often.

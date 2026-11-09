@@ -24,15 +24,24 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+from .errors import RosterInputError
 from .event_csv_generator import HEADER, csv_filename, generate_csv
 from .help_sheet_generator import HelpSheetInputError, generate_help_sheet
+from .inputs import SUPPORTED_EXTENSIONS, SUPPORTED_LABEL
 from .models import Roster, output_stem
-from .pdf_extractor import MAX_PDF_BYTES, PdfExtractionError
-from .pipeline import process_pdf
+from .pipeline import process_roster
 from .validation import OutputBlockedError, validate_roster
 
 LOOPBACK = "127.0.0.1"
+MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 MAX_JSON_BYTES = 4 * 1024 * 1024
+# Fallback format hints for clients that send a meaningful Content-Type
+# instead of the X-Roster-File-Type header.
+CONTENT_TYPE_HINTS = {
+    "application/pdf": "pdf",
+    "text/csv": "csv",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+}
 MAX_DRAIN_BYTES = 64 * 1024 * 1024  # oversized bodies up to this size are read and discarded
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 STATIC_FILES = {
@@ -41,6 +50,8 @@ STATIC_FILES = {
     "/static/styles.css": ("styles.css", "text/css; charset=utf-8"),
 }
 TOKEN_PLACEHOLDER = "__ROSTER_TOKEN__"
+ACCEPT_PLACEHOLDER = "__ROSTER_ACCEPT__"   # e.g. ".pdf,.csv,.xlsx" (from the input format registry)
+TYPES_PLACEHOLDER = "__ROSTER_TYPES__"     # e.g. "PDF, CSV or Excel (.xlsx)"
 
 CSP = (
     "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; "
@@ -179,7 +190,9 @@ class RequestHandler(BaseHTTPRequestHandler):
         body = (STATIC_DIR / filename).read_bytes()
         extra = {}
         if filename == "index.html":
-            body = body.replace(TOKEN_PLACEHOLDER.encode(), self.server.token.encode())
+            body = (body.replace(TOKEN_PLACEHOLDER.encode(), self.server.token.encode())
+                        .replace(ACCEPT_PLACEHOLDER.encode(), ",".join(SUPPORTED_EXTENSIONS).encode())
+                        .replace(TYPES_PLACEHOLDER.encode(), SUPPORTED_LABEL.encode()))
             extra["Content-Security-Policy"] = CSP
         self._send(200, body, content_type, extra)
 
@@ -205,19 +218,23 @@ class RequestHandler(BaseHTTPRequestHandler):
     # -- API ------------------------------------------------------------------
 
     def _api_roster(self) -> None:
-        body = self._read_body(MAX_PDF_BYTES)
+        body = self._read_body(MAX_UPLOAD_BYTES)
         if body is None:
             return
+        # Only the file's extension is sent (never its name); it must agree with the content.
+        hint = self.headers.get("X-Roster-File-Type") or CONTENT_TYPE_HINTS.get(
+            self.headers.get("Content-Type", "").split(";")[0].strip().lower())
         try:
-            result = process_pdf(body)
-        except PdfExtractionError as exc:
+            result = process_roster(body, hint)
+        except RosterInputError as exc:
             self._error(422, exc.user_message)
             return
-        log.info("processed %d page(s) in %.1f ms", result.page_count, result.timings_ms["total"])
+        log.info("processed %s roster in %.1f ms", result.source_format, result.timings_ms["total"])
         self._json(200, {
             "roster": result.roster.to_dict(),
             "issues": [i.to_dict() for i in result.issues],
             "page_count": result.page_count,
+            "source_format": result.source_format,
             "timings_ms": {k: round(v, 2) for k, v in result.timings_ms.items()},
         })
 

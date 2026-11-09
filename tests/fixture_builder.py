@@ -403,6 +403,118 @@ def build_sectioned_pdf(spec: SectionedSpec) -> bytes:
     return buf.getvalue()
 
 
+# --- The same SECTIONED roster as CSV and XLSX ---------------------------------
+#
+# Equivalent logical content to mock_roster_sections.pdf, in two other shapes:
+#   * XLSX: the PDF's sectioned layout as worksheet rows (metadata rows, section
+#     headings, "N. Last, First M" names, pronoun column, numeric IDs, Drops,
+#     Permission Numbers), placed AFTER an unrelated "Notes" sheet.
+#   * CSV: a typical flat export: one header row, a Status column
+#     (Enrolled / Waitlisted / Dropped / Withdrawn), rows interleaved, quoted
+#     "Last, First M" names, Course and Class Nbr columns, a totals row.
+
+CSV_COLUMNS = ("Student ID", "Name", "Pronouns", "Status", "Course", "Class Nbr", "Units")
+
+
+def sectioned_table_rows(spec: SectionedSpec) -> list[list]:
+    """The sectioned roster as spreadsheet rows (IDs as numbers, like Excel stores them)."""
+    def sid(w: str):
+        printed = printed_id(w)
+        return int(printed) if printed.isdigit() else printed
+
+    rows: list[list] = [["Example Community College"], [],
+                        ["Course:", spec.course_title], ["Professor:", "Staff, Example"], ["Meetings:", spec.meetings[0]]]
+    rows += [["", m] for m in spec.meetings[1:]]
+    rows += [["Term:", "Fall 2026"], ["Units:", 3], []]
+
+    def section(title: str, people: list[FakeRow], drop_dates: bool = False) -> None:
+        rows.append([title])
+        rows.append(["Student Name", "Pronouns", "Student ID"] + (["Drop Date"] if drop_dates else []))
+        for n, row in enumerate(people, start=1):
+            cells = [f"{n}. {row.last}, {row.first}", spec.pronouns.get(row.w_number, ""), sid(row.w_number)]
+            rows.append(cells + ([f"Oct {n:02d}, 2026"] if drop_dates else []))
+        rows.append([])
+
+    section("Current Students", spec.current)
+    if spec.waitlist:
+        section("Wait List", spec.waitlist)
+    else:
+        rows += [["Wait List"], ["No Waitlist Students"], []]
+    section("Drops", spec.drops, drop_dates=True)
+    rows += [["Permission Numbers"], ["#", "Permission Number", "Used By"]]
+    rows += [[n, int(code), name] for n, (code, name) in enumerate(spec.permission, start=1)]
+    return rows
+
+
+def sectioned_csv_rows(spec: SectionedSpec, columns: tuple[str, ...] = CSV_COLUMNS) -> list[list[str]]:
+    """The roster as a flat status-column export, with rows interleaved."""
+    others = [(r, "Waitlisted") for r in spec.waitlist]
+    others += [(r, "Withdrawn" if k % 2 else "Dropped") for k, r in enumerate(spec.drops)]
+    ordered = []
+    for i, row in enumerate(spec.current):
+        ordered.append((row, "Enrolled"))
+        if i % 2 == 1 and others:
+            ordered.append(others.pop(0))
+    ordered += others
+    values = {
+        "Student ID": lambda r, s: printed_id(r.w_number), "Name": lambda r, s: f"{r.last}, {r.first}",
+        "Last Name": lambda r, s: r.last, "First Name": lambda r, s: r.first,
+        "Pronouns": lambda r, s: spec.pronouns.get(r.w_number, ""), "Status": lambda r, s: s,
+        "Course": lambda r, s: spec.course_title, "Class Nbr": lambda r, s: spec.expected_section,
+        "Units": lambda r, s: "3.00", "Email": lambda r, s: f"{printed_id(r.w_number)}@example.edu",
+    }
+    rows = [list(columns)] + [[values[c](r, s) for c in columns] for r, s in ordered]
+    total = [""] * len(columns)
+    total[0] = f"Total Enrolled: {len(spec.current)}"
+    return rows + [[""] * len(columns), total]
+
+
+def to_csv(rows: list[list], delimiter: str = ",", bom: bool = False) -> bytes:
+    import csv as _csv
+    buf = io.StringIO(newline="")
+    _csv.writer(buf, delimiter=delimiter, lineterminator="\r\n").writerows(rows)
+    return (b"\xef\xbb\xbf" if bom else b"") + buf.getvalue().encode("utf-8")
+
+
+def build_xlsx(sheets: list[tuple[str, list[list]]], hidden: tuple[str, ...] = ()) -> bytes:
+    """A workbook with the given sheets, made byte-for-byte reproducible."""
+    import zipfile
+    from openpyxl import Workbook
+    wb = Workbook()
+    wb.remove(wb.active)
+    for title, rows in sheets:
+        ws = wb.create_sheet(title)
+        for row in rows:
+            ws.append(row)
+        if title in hidden:
+            ws.sheet_state = "hidden"
+    wb.properties.creator = "Roster Tool tests"
+    raw = io.BytesIO()
+    wb.save(raw)
+    # Fixed timestamps (zip entries and document properties) for stable fixtures.
+    out = io.BytesIO()
+    with zipfile.ZipFile(io.BytesIO(raw.getvalue())) as src, zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as dst:
+        for info in src.infolist():
+            data = src.read(info.filename)
+            if info.filename == "docProps/core.xml":
+                data = re.sub(rb"(<dcterms:(created|modified)[^>]*>)[^<]*", rb"\g<1>2000-01-01T00:00:00Z", data)
+            entry = zipfile.ZipInfo(info.filename, date_time=(2000, 1, 1, 0, 0, 0))
+            entry.compress_type = zipfile.ZIP_DEFLATED
+            dst.writestr(entry, data)
+    return out.getvalue()
+
+
+NOTES_SHEET = [["Notes"], ["This sheet is not a roster."], ["Upload the whole workbook; the Roster sheet is found automatically."]]
+
+
+def build_sectioned_xlsx(spec: SectionedSpec) -> bytes:
+    return build_xlsx([("Notes", NOTES_SHEET), ("Roster", sectioned_table_rows(spec))])
+
+
+def build_sectioned_csv(spec: SectionedSpec) -> bytes:
+    return to_csv(sectioned_csv_rows(spec))
+
+
 def build_image_only_pdf() -> bytes:
     """A PDF with graphics but no text layer (like a scan)."""
     buf = io.BytesIO()
@@ -420,7 +532,14 @@ def write_fixtures(directory: Path = FIXTURE_DIR) -> list[Path]:
         path = directory / spec.filename
         path.write_bytes(build_pdf(spec))
         paths.append(path)
-    path = directory / SECTIONED.filename
-    path.write_bytes(build_sectioned_pdf(SECTIONED))
-    paths.append(path)
+    for name, data in ((SECTIONED.filename, build_sectioned_pdf(SECTIONED)),
+                       (CSV_FIXTURE, build_sectioned_csv(SECTIONED)),
+                       (XLSX_FIXTURE, build_sectioned_xlsx(SECTIONED))):
+        path = directory / name
+        path.write_bytes(data)
+        paths.append(path)
     return paths
+
+
+CSV_FIXTURE = "mock_roster_sections.csv"
+XLSX_FIXTURE = "mock_roster_sections.xlsx"

@@ -1,0 +1,3 @@
+# Fake CSV fixtures intentionally use CRLF line endings (as Excel writes CSV).
+# Keep their bytes exact (tests compare them byte-for-byte) and accept the CRs.
+tests/fixtures/*.csv -text whitespace=cr-at-eol

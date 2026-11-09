@@ -110,9 +110,19 @@ column boundary). Check the following:
 | `roster_tool/roster_parser.py` | **Roster interpretation.** `ParseRules` plus `TableRosterParser`. This is where adaptation happens. |
 | `roster_tool/names.py` | Splitting a full name into first and last. |
 | `roster_tool/models.py` | `W_NUMBER_RE`, the single definition of a valid W number, used by both the parser and the validation. |
+| `roster_tool/inputs/` | Format detection and the CSV/XLSX adapters. Spreadsheet rows reuse this parser's rules; see [INPUT_FORMATS.md](INPUT_FORMATS.md). |
 
 Everything after the parser (validation, CSV, help sheet, UI) works only with
 `models.Roster`. When the parser is changed correctly, nothing else needs to change.
+
+**Real CSV/XLSX exports:** follow the same procedure. Keep the file in
+`private_rosters/`, then check:
+* the header names, against `TableRules.headers` in `inputs/table.py`;
+* the Status values, against `TableRules.status_values`;
+* how course and section appear.
+
+Use `scripts/benchmark.py private_rosters/export.xlsx` for timing, and
+redacted scripts for verification.
 
 ## 3. How the parsing rules are defined
 

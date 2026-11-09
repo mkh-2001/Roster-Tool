@@ -3,7 +3,7 @@ name = "roster-tool"
 version = "0.1.0"
 description = "Offline class-roster utility: printable help sheets and event-invite CSVs."
 requires-python = ">=3.12"
-dependencies = ["pypdfium2>=4.30", "reportlab>=4.0"]
+dependencies = ["pypdfium2>=4.30", "reportlab>=4.0", "openpyxl>=3.1"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]

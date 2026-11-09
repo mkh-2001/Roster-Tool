@@ -1,3 +1,4 @@
 # Runtime dependencies (bundled into the packaged app; no network needed at runtime)
-pypdfium2==5.15.2
-reportlab==5.1.0
+pypdfium2==5.15.2   # PDF text extraction
+reportlab==5.1.0    # help-sheet PDF generation
+openpyxl==3.1.5     # reading .xlsx rosters (pure Python; pulls in et_xmlfile)

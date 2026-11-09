@@ -12,6 +12,9 @@ private_rosters/
 *.tsv
 *.xls
 *.xlsx
+# ...except the FAKE test fixtures (invented data only):
+!tests/fixtures/*.csv
+!tests/fixtures/*.xlsx
 
 # ---------------------------------------------------------------------------
 # Python / build artifacts

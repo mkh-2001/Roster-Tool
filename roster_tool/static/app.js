@@ -4,7 +4,10 @@
 // Student data is inserted with textContent / value only, never as HTML.
 (() => {
   const TOKEN = document.querySelector('meta[name="roster-token"]').content;
-  const MAX_PDF_BYTES = 20 * 1024 * 1024;
+  // Supported extensions come from the server's input-format registry (".pdf,.csv,.xlsx").
+  const ACCEPTED = document.querySelector('meta[name="roster-accept"]').content.split(",");
+  const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
+  const SOURCE_LABELS = { csv: "the CSV file", xlsx: "the Excel workbook" };
   const MAX_ISSUES_SHOWN = 12;
   const $ = (id) => document.getElementById(id);
 
@@ -21,15 +24,16 @@
 
   // ---------------------------------------------------------------- API ----
 
-  async function api(path, body, binary = false) {
+  // `fileType` (an extension such as "csv") is sent for uploads; the file's name never leaves the page.
+  async function api(path, body, fileType = null) {
+    const binary = fileType !== null;
+    const headers = { "X-Roster-Token": TOKEN, "Content-Type": binary ? "application/octet-stream" : "application/json" };
+    if (binary) headers["X-Roster-File-Type"] = fileType;
     let res;
     try {
       res = await fetch(path, {
         method: "POST",
-        headers: {
-          "X-Roster-Token": TOKEN,
-          "Content-Type": binary ? "application/pdf" : "application/json",
-        },
+        headers,
         body: binary ? body : JSON.stringify(body),
       });
     } catch (_) {
@@ -61,23 +65,28 @@
   async function handleFile(file) {
     if (!file) return;
     const status = $("upload-status");
-    if (!/\.pdf$/i.test(file.name) && file.type !== "application/pdf") {
-      setStatus(status, "Please choose a PDF file.", "error");
+    const dot = file.name.lastIndexOf(".");
+    const ext = dot > 0 ? file.name.slice(dot).toLowerCase() : "";
+    if (!ACCEPTED.includes(ext)) {
+      setStatus(status, `Please choose a roster file of a supported type (${ACCEPTED.join(", ")}).`, "error");
       return;
     }
-    if (file.size > MAX_PDF_BYTES) {
-      setStatus(status, "This PDF is larger than the 20 MB limit.", "error");
+    if (file.size > MAX_UPLOAD_BYTES) {
+      setStatus(status, "This file is larger than the 20 MB limit.", "error");
       return;
     }
     clearRoster();
     setStatus(status, "Reading roster…");
     const started = performance.now();
     try {
-      const data = await api("/api/roster", file, true);
+      const data = await api("/api/roster", file, ext.slice(1));
       loadRoster(data.roster, data.issues, file.name);
       const secs = ((performance.now() - started) / 1000).toFixed(2);
       const n = data.roster.students.length;
-      setStatus(status, `Read ${n} student${n === 1 ? "" : "s"} from ${data.page_count} page${data.page_count === 1 ? "" : "s"} in ${secs} s.`, "ok");
+      const source = data.page_count !== null
+        ? `${data.page_count} page${data.page_count === 1 ? "" : "s"}`
+        : SOURCE_LABELS[data.source_format] || "the file";
+      setStatus(status, `Read ${n} student${n === 1 ? "" : "s"} from ${source} in ${secs} s.`, "ok");
     } catch (e) {
       setStatus(status, e.message, "error");
     } finally {

@@ -1,0 +1,28 @@
+Student ID,Name,Pronouns,Status,Course,Class Nbr,Units
+3000001,"Abernathy, Esperanza L",(she/her/hers),Enrolled,ANTH 310 Cultural Anthropology,20001,3.00
+3000002,"Bautista-Reyes, Gabriel",,Enrolled,ANTH 310 Cultural Anthropology,20001,3.00
+3100001,"Castellanos, Rosa M",(she/her),Waitlisted,ANTH 310 Cultural Anthropology,20001,3.00
+3000003,"de la Cruz, Isabella M.",(she/her),Enrolled,ANTH 310 Cultural Anthropology,20001,3.00
+3000004,"Dang, Bao",,Enrolled,ANTH 310 Cultural Anthropology,20001,3.00
+3100002,"Nakamura, Kenji",,Waitlisted,ANTH 310 Cultural Anthropology,20001,3.00
+3000005,"Fofanah, Dawit K",,Enrolled,ANTH 310 Cultural Anthropology,20001,3.00
+3000006,"Hakimi, Samir",(he/him/his),Enrolled,ANTH 310 Cultural Anthropology,20001,3.00
+3100003,"St. James, Olivia R",,Waitlisted,ANTH 310 Cultural Anthropology,20001,3.00
+3000007,"Kowalczyk, Zofia A",,Enrolled,ANTH 310 Cultural Anthropology,20001,3.00
+3000008,"Lee, Mary Ann",,Enrolled,ANTH 310 Cultural Anthropology,20001,3.00
+3200001,"Ellis, Wesley J",,Dropped,ANTH 310 Cultural Anthropology,20001,3.00
+3000009,"Moua, Kai T",(they/them/theirs),Enrolled,ANTH 310 Cultural Anthropology,20001,3.00
+3000010,"O'Neil, Sean P",,Enrolled,ANTH 310 Cultural Anthropology,20001,3.00
+3200002,"Gill, Jasmine",(she/her),Withdrawn,ANTH 310 Cultural Anthropology,20001,3.00
+3000011,"Peña, José Luis",,Enrolled,ANTH 310 Cultural Anthropology,20001,3.00
+3000012,"Van Der Berg, Pieter J",,Enrolled,ANTH 310 Cultural Anthropology,20001,3.00
+3200003,"Ivanova, Tatiana",,Dropped,ANTH 310 Cultural Anthropology,20001,3.00
+3000013,"Vongphachanh-Rasavong, Khamphoui",,Enrolled,ANTH 310 Cultural Anthropology,20001,3.00
+3000014,"Xiong, Yer",,Enrolled,ANTH 310 Cultural Anthropology,20001,3.00
+3200004,"Jaramillo, Oscar L",,Withdrawn,ANTH 310 Cultural Anthropology,20001,3.00
+3200005,"Rahimi, Priya",,Dropped,ANTH 310 Cultural Anthropology,20001,3.00
+3200006,"Tran, Leilani",,Withdrawn,ANTH 310 Cultural Anthropology,20001,3.00
+3200007,"Udeh, Uriel",,Dropped,ANTH 310 Cultural Anthropology,20001,3.00
+3200008,"Zamora, Ximena",,Withdrawn,ANTH 310 Cultural Anthropology,20001,3.00
+,,,,,,
+Total Enrolled: 14,,,,,,

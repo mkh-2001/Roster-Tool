@@ -15,7 +15,8 @@ TEXT_SUFFIXES = {".py", ".md", ".txt", ".toml", ".cfg", ".ini", ".json", ".html"
 
 def project_text_files():
     for dirpath, dirnames, filenames in os.walk(ROOT):
-        dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
+        # Skip environments (.venv, .venv-macos-build, ...) and build output: not project files.
+        dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS and not d.startswith(".venv")]
         for name in filenames:
             path = Path(dirpath) / name
             if path.suffix in TEXT_SUFFIXES and path.resolve() != THIS_FILE:

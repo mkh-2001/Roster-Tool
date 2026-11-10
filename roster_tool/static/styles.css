@@ -59,6 +59,13 @@ body {
 }
 .topbar h1 { margin: 0; font-size: 19px; }
 .offline-note { color: var(--muted); font-size: 13px; }
+.topbar-end { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+.topbar-end .button.small { margin-top: 0; }
+.version { font-size: 12px; }
+.closed-banner {
+  margin: 0; padding: 12px 24px; text-align: center; font-weight: 600;
+  background: var(--warn-bg); color: var(--warn); border-bottom: 1px solid var(--border);
+}
 
 main {
   max-width: 1000px;

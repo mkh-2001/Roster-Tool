@@ -14,7 +14,10 @@ telemetry, no database and no internet requirement.
 > adapted to and verified against **one** real Los Rios "Print Roster" PDF; more
 > real rosters (especially one with waitlisted students) should be validated
 > using [REAL_ROSTER_INTEGRATION.md](REAL_ROSTER_INTEGRATION.md).
-> Desktop packaging is planned in [PACKAGING.md](PACKAGING.md).
+> **Desktop app:** a macOS `Roster Tool.app` is built and validated (Apple
+> Silicon, macOS 13 or later; unsigned internal build). Windows packaging is
+> prepared but not yet validated. See [PACKAGING.md](PACKAGING.md) and
+> [WINDOWS_BUILD.md](WINDOWS_BUILD.md).
 
 ## Run it (development)
 
@@ -24,9 +27,14 @@ python3 -m venv .venv
 .venv/bin/python -m roster_tool            # opens the UI in your browser (127.0.0.1 only)
 ```
 
+The app stops when its browser tab is closed, when **Quit Roster Tool** is
+clicked, or on Ctrl+C. It runs the same launcher as the packaged desktop app.
+
 | Task | Command |
 |---|---|
 | Run all tests | `.venv/bin/python -m pytest` |
+| Build the desktop app (this platform) | `.venv/bin/python scripts/build_app.py` (needs `requirements-build.txt`) |
+| Smoke-test the built app | `.venv/bin/python scripts/smoke_test_package.py [--no-network]` |
 | Benchmark | `.venv/bin/python scripts/benchmark.py [roster.pdf roster.csv roster.xlsx]` |
 | See what the parser sees | `.venv/bin/python scripts/inspect_pdf.py roster.pdf [--students]` |
 | Regenerate fake fixtures | `.venv/bin/python scripts/make_fixtures.py` |
@@ -77,6 +85,10 @@ roster file ─► format detection ─┬─► PDF:  pdf_extractor ─► rost
 | `roster_tool/help_sheet_generator.py` | Help sheet PDF layout and pagination |
 | `roster_tool/pipeline.py` | Detect, read, normalize and validate (`process_roster`), with stage timings |
 | `roster_tool/server.py` | Local-only HTTP server for the UI |
+| `roster_tool/desktop.py` | Desktop launcher: log, self-checks, server start, opening the browser, error dialogs |
+| `roster_tool/lifecycle.py` | When to exit: no Roster Tool tab open, Quit, or timeouts (single process, so nothing is orphaned) |
+| `roster_tool/resources.py` | The one place that locates static files and fonts (source and packaged) |
+| `packaging/` | PyInstaller spec and frozen entry point; see [PACKAGING.md](PACKAGING.md) |
 | `roster_tool/static/` | UI (plain HTML, CSS and JS, no framework, no CDN) |
 
 ## Technology choices

@@ -1,12 +1,23 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "roster-tool"
-version = "0.1.0"
+dynamic = ["version"]  # single source of truth: roster_tool/__init__.py
 description = "Offline class-roster utility: printable help sheets and event-invite CSVs."
 requires-python = ">=3.12"
 dependencies = ["pypdfium2>=4.30", "reportlab>=4.0", "openpyxl>=3.1"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
+build = ["pyinstaller>=6.10"]
+
+[tool.setuptools]
+packages = ["roster_tool", "roster_tool.inputs"]
+
+[tool.setuptools.dynamic]
+version = { attr = "roster_tool.__version__" }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

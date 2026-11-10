@@ -1,0 +1,9 @@
+# Packaging dependencies (developer/build machine only; never shipped to staff).
+# macOS release builds: use the python.org Python 3.13 (see PACKAGING.md).
+-r requirements.txt
+pyinstaller==6.22.3
+pyinstaller-hooks-contrib==2026.9
+altgraph==0.17.5
+packaging==26.3
+macholib==1.16.4; sys_platform == "darwin"
+# Windows additionally pulls pefile and pywin32-ctypes (pin them after the first validated Windows build).

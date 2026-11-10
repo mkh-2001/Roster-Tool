@@ -28,7 +28,6 @@ import io
 import math
 import threading
 from dataclasses import dataclass, field
-from pathlib import Path
 
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch
@@ -36,6 +35,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
 
+from . import resources
 from .models import Roster, Student, clean_text
 from .validation import OutputBlockedError, blocking_errors, validate_roster
 
@@ -60,7 +60,7 @@ NAME_SIZES = (9.0, 8.5, 8.0, 7.5)  # tried in order before wrapping
 WRAP_EXTRA_UNITS = 0.75      # each extra wrapped line costs this many rows
 MAX_TUTOR_LEN = 100
 
-FONT_DIR = Path(__file__).resolve().parent / "assets" / "fonts"
+FONT_DIR = resources.FONT_DIR
 FONT = "RosterSans"
 FONT_BOLD = "RosterSans-Bold"
 _font_lock = threading.Lock()

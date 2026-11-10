@@ -515,9 +515,65 @@
     setTimeout(() => URL.revokeObjectURL(url), 10000);
   }
 
+  // ----------------------------------------------------------- Lifecycle ----
+  // The app keeps running while at least one Roster Tool tab is open
+  // (roster_tool/lifecycle.py). Closing the last tab, or Quit, stops it.
+
+  const CLIENT_ID = crypto.randomUUID ? crypto.randomUUID() : `${String(Math.random()).slice(2)}-${Date.now()}`;
+  const HEARTBEAT_MS = 30000;
+  let appClosed = false;
+
+  function showClosed() {
+    if (appClosed) return;
+    appClosed = true;
+    $("closed-banner").hidden = false;
+    $("quit-btn").disabled = true;
+  }
+
+  async function heartbeat() {
+    if (appClosed) return;
+    try {
+      await api("/api/heartbeat", { client: CLIENT_ID });
+    } catch (_) {
+      showClosed();
+    }
+  }
+
+  function sayGoodbye() {
+    if (appClosed) return;
+    try {
+      // keepalive lets the request finish while the tab is closing
+      fetch("/api/goodbye", {
+        method: "POST",
+        keepalive: true,
+        headers: { "X-Roster-Token": TOKEN, "Content-Type": "application/json" },
+        body: JSON.stringify({ client: CLIENT_ID }),
+      });
+    } catch (_) {
+      /* the app will notice the closed tab by its missing heartbeats */
+    }
+  }
+
+  async function quitApp() {
+    try {
+      await api("/api/shutdown", {});
+    } catch (_) {
+      /* already stopped */
+    }
+    showClosed();
+  }
+
   // -------------------------------------------------------------- Wiring ----
 
   function init() {
+    $("quit-btn").addEventListener("click", quitApp);
+    heartbeat();
+    setInterval(heartbeat, HEARTBEAT_MS);
+    window.addEventListener("pagehide", sayGoodbye);
+    window.addEventListener("pageshow", (e) => {
+      if (e.persisted) heartbeat(); // restored from the back/forward cache
+    });
+
     const input = $("file-input");
     input.addEventListener("change", () => handleFile(input.files[0]));
     $("replace-btn").addEventListener("click", () => input.click());

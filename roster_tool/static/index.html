@@ -14,7 +14,14 @@
   <header class="topbar">
     <h1>Roster Tool</h1>
     <span class="offline-note">Works offline &middot; student data stays on this computer</span>
+    <span class="topbar-end">
+      <span class="version muted">Version __ROSTER_VERSION__</span>
+      <button id="quit-btn" type="button" class="button small">Quit Roster Tool</button>
+    </span>
   </header>
+  <p id="closed-banner" class="closed-banner" role="alert" hidden>
+    Roster Tool has closed. You can close this tab; open Roster Tool again to continue.
+  </p>
 
   <main>
     <!-- 1. Upload -->

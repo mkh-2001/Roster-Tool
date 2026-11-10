@@ -19,11 +19,14 @@ import base64
 import hmac
 import json
 import logging
+import re
 import secrets
+import socketserver
+import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
 
+from . import __version__, resources
 from .errors import RosterInputError
 from .event_csv_generator import HEADER, csv_filename, generate_csv
 from .help_sheet_generator import HelpSheetInputError, generate_help_sheet
@@ -43,7 +46,7 @@ CONTENT_TYPE_HINTS = {
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
 }
 MAX_DRAIN_BYTES = 64 * 1024 * 1024  # oversized bodies up to this size are read and discarded
-STATIC_DIR = Path(__file__).resolve().parent / "static"
+STATIC_DIR = resources.STATIC_DIR
 STATIC_FILES = {
     "/": ("index.html", "text/html; charset=utf-8"),
     "/static/app.js": ("app.js", "text/javascript; charset=utf-8"),
@@ -52,6 +55,9 @@ STATIC_FILES = {
 TOKEN_PLACEHOLDER = "__ROSTER_TOKEN__"
 ACCEPT_PLACEHOLDER = "__ROSTER_ACCEPT__"   # e.g. ".pdf,.csv,.xlsx" (from the input format registry)
 TYPES_PLACEHOLDER = "__ROSTER_TYPES__"     # e.g. "PDF, CSV or Excel (.xlsx)"
+VERSION_PLACEHOLDER = "__ROSTER_VERSION__"
+CLIENT_ID = re.compile(r"[A-Za-z0-9-]{8,64}")
+QUIET_ROUTES = {"/api/heartbeat"}  # sent every 30 s; not worth a log line each time
 
 CSP = (
     "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; "
@@ -65,13 +71,25 @@ log = logging.getLogger("roster_tool.server")
 class RosterToolServer(ThreadingHTTPServer):
     daemon_threads = True
 
-    def __init__(self, port: int = 0):
+    def __init__(self, port: int = 0, lifecycle=None):
         # The host is fixed: there is deliberately no way to bind elsewhere.
         super().__init__((LOOPBACK, port), RequestHandler)
         self.token = secrets.token_urlsafe(32)
         self.port = self.server_address[1]
         self.origin = f"http://{LOOPBACK}:{self.port}"
         self.allowed_hosts = {f"{LOOPBACK}:{self.port}", f"localhost:{self.port}"}
+        # Optional lifecycle.SessionMonitor (set by the desktop launcher): told
+        # which browser tabs are open, and asked to exit on "Quit".
+        self.lifecycle = lifecycle
+
+    def server_bind(self) -> None:
+        # The standard HTTPServer.server_bind() also does a reverse-DNS lookup
+        # (socket.getfqdn) just to fill in `server_name`, which is never used
+        # here. In the packaged app that lookup blocked startup for ~35 s when
+        # launched outside a terminal (e.g. by double-click), and it is a
+        # needless resolver query. Bind without it.
+        socketserver.TCPServer.server_bind(self)
+        self.server_name, self.server_port = self.server_address[:2]
 
     @property
     def url(self) -> str:
@@ -91,6 +109,8 @@ class RequestHandler(BaseHTTPRequestHandler):
 
     def log_request(self, code="-", size="-"):
         elapsed = (time.perf_counter() - getattr(self, "_t0", time.perf_counter())) * 1000
+        if self._route() in QUIET_ROUTES and str(code).startswith("2"):
+            return
         log.info("%s %s -> %s (%.0f ms)", self.command, self._route(), code, elapsed)
 
     def _route(self) -> str:
@@ -192,7 +212,8 @@ class RequestHandler(BaseHTTPRequestHandler):
         if filename == "index.html":
             body = (body.replace(TOKEN_PLACEHOLDER.encode(), self.server.token.encode())
                         .replace(ACCEPT_PLACEHOLDER.encode(), ",".join(SUPPORTED_EXTENSIONS).encode())
-                        .replace(TYPES_PLACEHOLDER.encode(), SUPPORTED_LABEL.encode()))
+                        .replace(TYPES_PLACEHOLDER.encode(), SUPPORTED_LABEL.encode())
+                        .replace(VERSION_PLACEHOLDER.encode(), __version__.encode()))
             extra["Content-Security-Policy"] = CSP
         self._send(200, body, content_type, extra)
 
@@ -205,6 +226,9 @@ class RequestHandler(BaseHTTPRequestHandler):
             "/api/validate": self._api_validate,
             "/api/csv": self._api_csv,
             "/api/help-sheet": self._api_help_sheet,
+            "/api/heartbeat": self._api_heartbeat,
+            "/api/goodbye": self._api_goodbye,
+            "/api/shutdown": self._api_shutdown,
         }.get(self._route())
         if handler is None:
             self._error(404, "Not found")
@@ -216,6 +240,46 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._error(500, "Something went wrong while processing this request.")
 
     # -- API ------------------------------------------------------------------
+
+    # -- app lifecycle (which tabs are open; Quit) ------------------------------
+
+    def _client_id(self) -> str | None:
+        data = self._read_json()
+        if data is None:
+            return None
+        client = data.get("client")
+        if not isinstance(client, str) or not CLIENT_ID.fullmatch(client):
+            self._error(400, "Invalid request.")
+            return None
+        return client
+
+    def _api_heartbeat(self) -> None:
+        client = self._client_id()
+        if client is None:
+            return
+        if self.server.lifecycle is not None:
+            self.server.lifecycle.seen(client)
+        self._json(200, {"ok": True})
+
+    def _api_goodbye(self) -> None:
+        client = self._client_id()
+        if client is None:
+            return
+        if self.server.lifecycle is not None:
+            self.server.lifecycle.goodbye(client)
+        self._json(200, {"ok": True})
+
+    def _api_shutdown(self) -> None:
+        if self._read_json() is None:
+            return
+        if self.server.lifecycle is not None:
+            # Only sets a flag; the monitor stops the app on its next tick,
+            # well after this response has been sent.
+            self.server.lifecycle.request_exit("Quit button")
+            self._json(200, {"ok": True})
+        else:
+            self._json(200, {"ok": True})  # answer first, then stop
+            threading.Thread(target=self.server.shutdown, daemon=True).start()
 
     def _api_roster(self) -> None:
         body = self._read_body(MAX_UPLOAD_BYTES)

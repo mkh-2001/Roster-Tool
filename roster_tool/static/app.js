@@ -109,6 +109,7 @@
     $("file-name").textContent = fileName;
     $("course-title").value = roster.course_title;
     $("section").value = roster.section;
+    $("meetings-location").value = roster.meetings_location || ""; // Help Sheet only; editable
     $("upload").classList.add("compact");
     $("summary").hidden = false;
     $("tools").hidden = false;
@@ -428,7 +429,8 @@
       return;
     }
     try {
-      const data = await api("/api/help-sheet", { roster: state.roster, tutor_name: tutor, days });
+      const meetingsLocation = $("meetings-location").value.trim(); // optional; sent with the help sheet only
+      const data = await api("/api/help-sheet", { roster: state.roster, tutor_name: tutor, meetings_location: meetingsLocation, days });
       clearHelpOutput(false);
       const bytes = Uint8Array.from(atob(data.pdf_base64), (c) => c.charCodeAt(0));
       const url = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
@@ -607,6 +609,10 @@
       if (e.key === "Enter") generateHelpSheet();
     });
     $("tutor-name").addEventListener("input", () => clearHelpOutput(true));
+    $("meetings-location").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") generateHelpSheet();
+    });
+    $("meetings-location").addEventListener("input", () => clearHelpOutput(true));
     for (const box of document.querySelectorAll("input[name='day']")) {
       box.addEventListener("change", () => clearHelpOutput(true));
     }

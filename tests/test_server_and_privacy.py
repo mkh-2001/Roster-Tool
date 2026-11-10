@@ -14,6 +14,7 @@ import pytest
 from fixture_builder import FIXTURE_DIR, MULTIPAGE, SMALL, build_pdf
 from roster_tool.event_csv_generator import generate_csv
 from roster_tool.help_sheet_generator import generate_help_sheet
+from roster_tool.pdf_extractor import extract_pdf
 from roster_tool.pipeline import process_pdf
 from roster_tool.server import LOOPBACK, MAX_JSON_BYTES, RosterToolServer
 
@@ -185,6 +186,34 @@ def test_help_sheet_input_errors(server):
     roster = json.loads(body)["roster"]
     assert post_json(server, "/api/help-sheet", {"roster": roster, "tutor_name": "", "days": ["Mon"]})[0] == 422
     assert post_json(server, "/api/help-sheet", {"roster": roster, "tutor_name": "Jane", "days": []})[0] == 422
+
+
+def test_meetings_location_is_for_the_help_sheet_only(server):
+    _, body, _ = call(server, "/api/roster", build_pdf(SMALL), "application/pdf")
+    roster = json.loads(body)["roster"]
+    _, plain = post_json(server, "/api/csv", {"roster": roster})
+    # Header-only values never change, block or join the Event CSV, whatever they hold.
+    for extra in ({"meetings_location": "Science 415", "professor": "Staff", "term": "Fall 2026"},
+                  {"meetings_location": "x" * 5000}, {"meetings_location": 42}, {"meetings_location": None}):
+        edited = {**roster, **extra}
+        status, data = post_json(server, "/api/csv", {"roster": edited})
+        assert status == 200 and (data["csv"], data["filename"]) == (plain["csv"], plain["filename"])
+        status, data = post_json(server, "/api/validate", {"roster": edited})
+        assert status == 200 and data["issues"] == []
+    assert plain["csv"].splitlines()[0] == "Email,First Name,Last Name,SSO ID,Student ID"
+
+    def header(payload):
+        status, sheet = post_json(server, "/api/help-sheet", {"roster": roster, "days": ["Mon"], **payload})
+        assert status == 200
+        return [line.text for line in extract_pdf(base64.b64decode(sheet["pdf_base64"])).pages[0].lines[:5]]
+
+    entered = header({"tutor_name": "Jane", "meetings_location": "Library 210"})
+    assert "Tutor: Jane" in entered and "Meetings Location: Library 210" in entered
+    assert "Meetings Location: —" in header({"tutor_name": "Jane", "meetings_location": ""})  # optional
+    assert "Meetings Location: —" in header({"tutor_name": "Jane"})  # SMALL's roster gives none
+    # The tutor stays required for the help sheet, with or without a location.
+    status, data = post_json(server, "/api/help-sheet", {"roster": roster, "tutor_name": " ", "meetings_location": "Library 210", "days": ["Mon"]})
+    assert status == 422 and "tutor" in data["error"].lower()
 
 
 # --- Privacy: logs and temporary files -----------------------------------------------------

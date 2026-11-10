@@ -130,3 +130,14 @@ def test_explicit_order_overrides_auto():
     assert split_name("Ahmadzai Hewad", "last_first").note is not None
     split = split_name("Hewad, Ahmadzai", "first_last")
     assert split.last == "Ahmadzai"  # comma ignored in first_last mode
+
+
+def test_help_sheet_header_fields_never_reject_a_roster():
+    data = Roster(course_title="PHIL 320", section="10141", students=[Student("W1234567", "Ana", "Lee")]).to_dict()
+    for bad in ("x" * 301, 42, ["Room 1"], {"room": 1}, True):
+        r = Roster.from_dict({**data, "meetings_location": bad, "professor": bad, "term": bad})
+        assert (r.meetings_location, r.professor, r.term) == ("", "", "")  # dropped, roster still accepted
+    r = Roster.from_dict({**data, "meetings_location": "  Science   415 ", "professor": "Staff", "term": "Fall 2026"})
+    assert (r.meetings_location, r.professor, r.term) == ("Science 415", "Staff", "Fall 2026")
+    with pytest.raises(ValueError):  # the strict checks on roster data the CSV uses are unchanged
+        Roster.from_dict({**data, "course_title": "x" * 301})

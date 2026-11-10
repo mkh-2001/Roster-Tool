@@ -108,3 +108,10 @@ def test_csv_does_not_need_course_or_section():
 
 def test_csv_filename_is_safe():
     assert csv_filename(hewad_roster()) == "event_invites_PHIL_320_10141.csv"
+
+
+def test_help_sheet_header_fields_never_reach_the_csv():
+    plain = make_roster(5)
+    dressed = make_roster(5, professor="Staff", term="Fall 2026", meetings_location="Science 415")
+    assert generate_csv(dressed) == generate_csv(plain)
+    assert generate_csv_bytes(dressed) == generate_csv_bytes(plain)

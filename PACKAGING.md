@@ -193,7 +193,9 @@ fake fixtures only.
 6. Repeat with `mock_roster_sections.csv` and `mock_roster_sections.xlsx`.
    The results should be the same.
 7. **Help Sheet:** enter a tutor name, tick Tue and Thu, then click Generate.
-   Expect 1 page, with Current Students and a separate Wait List for each day.
+   Expect 1 page with a Class / Professor / Tutor / Meetings Location / Term
+   header (the Meetings Location field is prefilled and editable), and Current
+   Students plus a separate Wait List for each day.
    Download PDF should work.
 8. **Event CSV** tab: expect 17 rows and the header
    `Email,First Name,Last Name,SSO ID,Student ID`. Download CSV should work.

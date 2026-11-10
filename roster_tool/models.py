@@ -117,6 +117,10 @@ class Roster:
     uncertain_fields: list[str] = field(default_factory=list)
     # Wait List count implied by the PDF's Wait List row numbering, if any.
     expected_waitlist_count: int | None = None
+    # Header information shown on the Help Sheet ("" when the roster doesn't give it).
+    professor: str = ""
+    term: str = ""
+    meetings_location: str = ""  # e.g. "Science 415", or "Room 101 (LEC); Room 102 (LAB)"
 
     @property
     def current_students(self) -> list[Student]:
@@ -135,6 +139,9 @@ class Roster:
             "expected_count_source": self.expected_count_source,
             "uncertain_fields": list(self.uncertain_fields),
             "expected_waitlist_count": self.expected_waitlist_count,
+            "professor": self.professor,
+            "term": self.term,
+            "meetings_location": self.meetings_location,
         }
 
     @classmethod
@@ -161,6 +168,9 @@ class Roster:
             expected_count_source=source if source in ("stated", "row_numbers") else None,
             uncertain_fields=[f for f in uncertain if f in ("course_title", "section")],
             expected_waitlist_count=expected_wait,
+            professor=_header_text(data.get("professor")),
+            term=_header_text(data.get("term")),
+            meetings_location=_header_text(data.get("meetings_location")),
         )
 
 
@@ -168,6 +178,9 @@ def normalize_roster(roster: Roster) -> Roster:
     """Canonicalize all text fields in place (idempotent) and return the roster."""
     roster.course_title = clean_text(roster.course_title)
     roster.section = clean_text(roster.section)
+    roster.professor = clean_text(roster.professor)
+    roster.term = clean_text(roster.term)
+    roster.meetings_location = clean_text(roster.meetings_location)
     for s in roster.students:
         s.w_number = (s.w_number or "").strip()
         s.first_name = clean_text(s.first_name)
@@ -186,6 +199,17 @@ def _optional_count(value: Any, name: str) -> int | None:
     if value is not None and (not isinstance(value, int) or isinstance(value, bool) or value < 0):
         raise ValueError(f"{name} must be a non-negative integer or null")
     return value
+
+
+def _header_text(value: Any) -> str:
+    """Help-Sheet-only header text (professor, term, meetings location).
+
+    It never rejects the roster: a value that isn't a short string is dropped,
+    so it can't block validation or the Event CSV, which never uses it.
+    """
+    if isinstance(value, str) and len(value) <= MAX_TEXT_LEN:
+        return clean_text(value)
+    return ""
 
 
 def _bounded(value: Any, name: str) -> str:

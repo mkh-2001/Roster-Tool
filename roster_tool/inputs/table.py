@@ -91,7 +91,8 @@ class TableInterpreter:
         self.parser = TableRosterParser(self.rules.parse_rules)
         pr = self.rules.parse_rules
         self._labels = {lbl for group in (pr.course_labels, pr.title_labels, pr.section_labels, pr.count_labels,
-                                          pr.meetings_labels, pr.other_labels) for lbl in group}
+                                          pr.meetings_labels, pr.professor_labels, pr.term_labels, pr.other_labels)
+                        for lbl in group}
         self._status = {v: pop for pop, values in self.rules.status_values.items() for v in values}
 
     # -- structure ------------------------------------------------------------

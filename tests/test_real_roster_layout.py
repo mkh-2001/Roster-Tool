@@ -306,7 +306,7 @@ def test_long_waitlist_paginates_with_continued_labels():
     for s in roster.students[50:]:
         s.status = WAITLIST
     sheet = generate_help_sheet(roster, "Jane", ["Mon", "Wed"])
-    assert sheet.page_count == 2
+    assert sheet.page_count == 3  # 70 students + 2 group labels at 29 double-spaced rows per page
     for plan in sheet.plans:
         for col in plan.columns:
             assert plan.items[col.end - 1].student is not None  # a label is never orphaned

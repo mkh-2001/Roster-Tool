@@ -116,8 +116,34 @@ W1234567@apps.losrios.edu,Hewad,Ahmadzai,W1234567,W1234567
 
 The CSV contains Current Students followed by Wait List students as ordinary
 rows, with no status column or other distinction. Dropped students are never included.
+The CSV's header and rows never contain the Tutor, Professor, Term, Meetings
+Location or Section. The section is used only in the suggested file name.
 
-**Help sheet:** course title, section and tutor name at the top. Then one
+**Help sheet:** a header with five fields, and the section number isn't printed:
+* **Class** (course title), **Professor** and **Term** come from the roster.
+* **Tutor** is typed in by the employee. It is required to generate the help
+  sheet, lasts only for the current session, and is never read from the roster.
+* **Meetings Location** is prefilled from the roster: the text before the
+  LEC/LAB code on the `Meetings:` line. It is shown once when every meeting uses
+  the same room, otherwise each is listed with its component, e.g.
+  `Room 101 (LEC); Room 102 (LAB)`. The employee can type or edit it. It is
+  optional and used only on the help sheet. It is never part of the Event CSV
+  and never blocks it.
+* A value that isn't given is shown as `—`.
+* **Header metadata never blocks the Event CSV.** Professor, Term and Meetings
+  Location are Help Sheet data, not part of the CSV contract. Tutor is
+  Help Sheet input only. When the roster comes back from the browser, a
+  Professor, Term or Meetings Location value that is malformed (not text) or
+  oversized (over 300 characters) is dropped. It then prints as `—` on the Help
+  Sheet, and the roster is still accepted, so validation and the Event CSV are
+  unaffected. The strict checks on the data the CSV does use (students, W
+  numbers, course title, section) are unchanged. A Meetings Location sent
+  with the Help Sheet request is limited to 300 characters. A longer value
+  stops only the Help Sheet, with a message.
+  (`roster_tool/models.py: _header_text`, tested in
+  `tests/test_models_and_names.py` and `tests/test_server_and_privacy.py`.)
+
+Then one
 column per selected day, each listing `☐ W1234567 Last, First` for every
 Current Student, with a `Date: ____` line. If the roster has waitlisted
 students, every day column also has a labelled **Wait List** group below the
@@ -126,8 +152,10 @@ Current Students. If it doesn't, no space is used for one.
 * There are at most 3 day-columns per page. With 4 or more days, the days are
   split across pages (4 days → 2+2, 5 → 3+2).
 * A single day with a long list continues in a second column on the same sheet.
-* Row height adjusts within a comfortable range to avoid an extra page.
-  Otherwise the sheet paginates. Students are never dropped and names are never truncated.
+* Student rows use line spacing 2.0 (21.6 pt per row for 9 pt names), which
+  fits about 29 rows per column. A name too long for its column wraps, and its
+  row grows taller to hold it. Longer lists paginate. Students are never dropped
+  and names are never truncated.
 
 ## Privacy and security
 

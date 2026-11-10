@@ -336,8 +336,11 @@ class RequestHandler(BaseHTTPRequestHandler):
         tutor = data.get("tutor_name")
         if not isinstance(tutor, str):
             tutor = ""
+        location = data.get("meetings_location")  # Help Sheet only; never part of the Event CSV
+        if not isinstance(location, str):
+            location = None  # not sent: use the roster's
         try:
-            result = generate_help_sheet(roster, tutor, data.get("days"))
+            result = generate_help_sheet(roster, tutor, data.get("days"), meetings_location=location)
         except HelpSheetInputError as exc:
             self._error(422, str(exc))
             return

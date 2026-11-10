@@ -87,13 +87,19 @@ class ParseRules:
     meetings_labels: tuple[str, ...] = ("meetings",)
     # A class number in a meeting line: component code + 5-digit number.
     class_number: re.Pattern = re.compile(r"\b[A-Z]{3}\s+(\d{5})\b")
+    # The time range in a meeting line; the meeting location is the text
+    # between it and the component code ("... 10:20 am Science 415 LEC 10153").
+    meeting_time: re.Pattern = _rx(r"\d{1,2}:\d{2}\s*[ap]m\s*-\s*\d{1,2}:\d{2}\s*[ap]m")
+    # Help Sheet header information.
+    professor_labels: tuple[str, ...] = ("professor", "instructor")
+    term_labels: tuple[str, ...] = ("term",)
     # Other known labels: only used to end the value of the label before them,
     # and to recognise metadata lines.
     other_labels: tuple[str, ...] = (
-        "term", "session", "instructor", "units", "room", "days", "time", "meets",
+        "session", "units", "room", "days", "time", "meets",
         "location", "dates", "campus", "printed", "career", "component", "mode",
         "status", "capacity", "waitlist", "waitlisted", "college", "subject",
-        "professor", "drop date", "type",
+        "drop date", "type",
     )
 
     # Section headings (the whole line, case-insensitive) -> population.
@@ -198,7 +204,7 @@ class TableRosterParser:
         self.rules = rules or ParseRules()
         r = self.rules
         all_labels = (r.course_labels + r.title_labels + r.section_labels + r.count_labels
-                      + r.meetings_labels + r.other_labels)
+                      + r.meetings_labels + r.professor_labels + r.term_labels + r.other_labels)
         alternation = "|".join(
             r"\s*".join(re.escape(word) for word in lbl.split(" "))
             for lbl in sorted(all_labels, key=len, reverse=True)
@@ -281,6 +287,8 @@ class TableRosterParser:
         titles: list[str] = []
         sections: list[str] = []
         counts: list[int] = []
+        professors: list[str] = []
+        terms: list[str] = []
         for line in doc.lines:
             for label, value in self._labelled_values(line):
                 if not value:
@@ -295,6 +303,15 @@ class TableRosterParser:
                     m = re.match(r"(\d{1,4})\b", value)
                     if m:
                         counts.append(int(m.group(1)))
+                elif label in r.professor_labels:
+                    professors.append(value)
+                elif label in r.term_labels:
+                    terms.append(value)
+
+        # Help Sheet header information (left empty when the roster doesn't give it).
+        roster.professor = professors[0] if professors else ""
+        roster.term = terms[0] if terms else ""
+        roster.meetings_location = self._meetings_location(doc)
 
         # Course title
         if courses:
@@ -341,13 +358,10 @@ class TableRosterParser:
             if len(set(counts)) > 1:
                 diagnostics.append("enrolled count: different values on different pages")
 
-    def _meeting_class_numbers(self, doc: ExtractedDocument) -> list[str]:
-        """Class numbers from the first "Meetings:" block, in order.
-
-        The block is the labelled line plus the directly following unlabelled
-        lines that are themselves meeting lines (contain a class number).
-        Nothing outside this block can become the section.
-        """
+    def _meetings_block(self, doc: ExtractedDocument) -> list[str]:
+        """The first "Meetings:" block: the labelled line plus the directly
+        following unlabelled lines that are themselves meeting lines (contain a
+        class number). Nothing outside this block is used."""
         r = self.rules
         lines = doc.lines
         for i, line in enumerate(lines):
@@ -359,8 +373,33 @@ class TableRosterParser:
                 if nxt.page != line.page or self._labelled_values(nxt) or not r.class_number.search(nxt.text):
                     break
                 block.append(nxt.text)
-            return [num for text in block for num in r.class_number.findall(text)]
+            return block
         return []
+
+    def _meeting_class_numbers(self, doc: ExtractedDocument) -> list[str]:
+        """Class numbers from the Meetings block, in order (the section rule)."""
+        return [num for text in self._meetings_block(doc) for num in self.rules.class_number.findall(text)]
+
+    def _meetings_location(self, doc: ExtractedDocument) -> str:
+        """Meeting location(s): the text between a meeting line's time range and
+        its component code ("TuTh 9:00 am - 10:20 am Science 415 LEC 10153"
+        -> "Science 415"). One location is shown once; different locations are
+        listed with their component ("Room 101 (LEC); Room 102 (LAB)"). A line
+        without a time range gives no location (not guessed)."""
+        r = self.rules
+        found: list[tuple[str, str]] = []
+        for text in self._meetings_block(doc):
+            code = r.class_number.search(text)
+            time_range = r.meeting_time.search(text[: code.start()]) if code else None
+            if not code or not time_range:
+                continue
+            location = re.sub(r"\s+", " ", text[time_range.end(): code.start()]).strip(" -|,;")
+            if location:
+                found.append((location, code.group(0).split()[0]))
+        places = list(dict.fromkeys(location for location, _ in found))
+        if len(places) <= 1:
+            return places[0] if places else ""
+        return "; ".join(f"{location} ({component})" for location, component in found)
 
     # -- table structure ----------------------------------------------------
 

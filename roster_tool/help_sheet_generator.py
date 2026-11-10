@@ -2,16 +2,18 @@
 
 Layout
 ------
-* Header: course title, section, tutor name (and "Page x of y" when > 1 page).
+* Header: Class, Professor, Tutor, Meetings Location and Term (and "Page x
+  of y" when > 1 page). Class, Professor and Term come from the roster; the
+  Tutor is entered by the employee; the Meetings Location is prefilled from the
+  roster and the employee may edit it. A value that isn't given shows "—".
 * One column per selected meeting day, side by side, each a complete student
   list:   [ ] W1234567  Last, First
+* Student rows are double-spaced (line spacing 2.0) for readability and room
+  to mark by hand; the sheet paginates rather than tightening the spacing.
 * At most 3 day-columns per page. 4+ days are split into balanced groups
   (4 -> 2+2, 5 -> 3+2, ...), each group on its own page(s).
 * A single day whose list does not fit one column continues in a second
   column on the same page ("Tuesday (cont.)") before using another sheet.
-* Row height shrinks slightly (never below MIN_PITCH) only when that avoids an
-  extra page; otherwise rows stay at a comfortable height and the sheet
-  paginates. Text is never shrunk to cram students in.
 * Long names shrink a little, then wrap. Names are never truncated, and no
   student is ever dropped.
 * When the roster has a Wait List, every day column lists "Current Students"
@@ -36,12 +38,12 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
 
 from . import resources
-from .models import Roster, Student, clean_text
+from .models import MAX_TEXT_LEN, Roster, Student, clean_text
 from .validation import OutputBlockedError, blocking_errors, validate_roster
 
 CURRENT_LABEL = "Current Students"
 WAITLIST_LABEL = "Wait List"
-LABEL_UNITS = 1.4  # a group label takes this many row heights
+LABEL_UNITS = 1.0  # a group label takes this many row heights
 
 DAY_ORDER = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
 
@@ -50,15 +52,21 @@ MARGIN = 0.4 * inch          # printer-safe on virtually all printers
 GUTTER = 0.22 * inch
 MAX_COLS_PER_PAGE = 3
 
-HEADER_H = 40.0              # course / section / tutor block
+HEADER_H = 77.0              # Class / Professor / Tutor / Meetings Location / Term block
+HEADER_FIELDS = ("Class", "Professor", "Tutor", "Meetings Location", "Term")
+HEADER_BASELINES = (12.0, 26.0, 39.0, 52.0, 65.0)  # below the top margin, one per field
+MISSING = "—"                # shown when a header value is not given
 COLUMN_HEAD_H = 26.0         # day label + date line
-MAX_PITCH = 15.0             # comfortable row height (pt)
-MIN_PITCH = 12.5             # still easy to tick; used only to save a page
 BOX = 8.5                    # checkbox side (pt) ~ 3 mm
 ID_SIZE = 8.5
 NAME_SIZES = (9.0, 8.5, 8.0, 7.5)  # tried in order before wrapping
-WRAP_EXTRA_UNITS = 0.75      # each extra wrapped line costs this many rows
+SINGLE_LINE = 1.2 * NAME_SIZES[0]  # single-spaced line height for 9 pt text (10.8 pt)
+LINE_SPACING = 2.0                 # student rows are double-spaced
+ROW_PITCH = LINE_SPACING * SINGLE_LINE  # 21.6 pt per student row
+MAX_PITCH = MIN_PITCH = ROW_PITCH  # fixed: never tightened to save a page
+WRAP_EXTRA_UNITS = 0.5       # a name wrapped onto 2 lines gets 1.5 row heights
 MAX_TUTOR_LEN = 100
+MAX_LOCATION_LEN = MAX_TEXT_LEN
 
 FONT_DIR = resources.FONT_DIR
 FONT = "RosterSans"
@@ -303,13 +311,21 @@ class HelpSheetResult:
     plans: list[PagePlan] = field(repr=False)
 
 
-def generate_help_sheet(roster: Roster, tutor_name: str, days) -> HelpSheetResult:
+def generate_help_sheet(roster: Roster, tutor_name: str, days,
+                        meetings_location: str | None = None) -> HelpSheetResult:
+    """`meetings_location` is the employee's (possibly edited) value; None uses the roster's.
+
+    It is optional and used only for this header: blank prints "—".
+    """
     ensure_fonts()
     tutor = clean_text(tutor_name)
     if not tutor:
         raise HelpSheetInputError("Enter the tutor's name.")
     if len(tutor) > MAX_TUTOR_LEN:
         raise HelpSheetInputError("Tutor name is too long.")
+    location = roster.meetings_location if meetings_location is None else clean_text(meetings_location)
+    if len(location) > MAX_LOCATION_LEN:
+        raise HelpSheetInputError("Meetings Location is too long.")
     days = normalize_days(days)
     if not roster.course_title:
         raise HelpSheetInputError("Enter the course title.")
@@ -320,7 +336,8 @@ def generate_help_sheet(roster: Roster, tutor_name: str, days) -> HelpSheetResul
         raise OutputBlockedError(errors)
 
     plans = plan_layout(roster, days)
-    warnings = _glyph_warnings([roster.course_title, roster.section, tutor] + [s.display_name for s in roster.students])
+    header = header_values(roster, tutor, location)
+    warnings = _glyph_warnings([value for _, value in header] + [s.display_name for s in roster.students])
 
     buf = io.BytesIO()
     c = canvas.Canvas(buf, pagesize=letter, invariant=1, pageCompression=1)
@@ -329,7 +346,7 @@ def generate_help_sheet(roster: Roster, tutor_name: str, days) -> HelpSheetResul
     c.setAuthor("")
     id_w = _id_width(roster)
     for number, plan in enumerate(plans, start=1):
-        _draw_header(c, roster, tutor, number, len(plans))
+        _draw_header(c, header, number, len(plans))
         for k, col in enumerate(plan.columns):
             x = MARGIN + k * (plan.col_width + GUTTER)
             _draw_column(c, roster, plan, col, x, id_w)
@@ -352,31 +369,37 @@ def _fit_size(text: str, font: str, size: float, min_size: float, width: float) 
     return size
 
 
-def _draw_header(c: canvas.Canvas, roster: Roster, tutor: str, page: int, pages: int) -> None:
+def header_values(roster: Roster, tutor: str, meetings_location: str) -> list[tuple[str, str]]:
+    """The Help Sheet header: exactly these five items."""
+    values = (roster.course_title, roster.professor, tutor, meetings_location, roster.term)
+    return list(zip(HEADER_FIELDS, values))
+
+
+def _draw_header(c: canvas.Canvas, header: list[tuple[str, str]], page: int, pages: int) -> None:
     top = PAGE_H - MARGIN
     usable = PAGE_W - 2 * MARGIN
     page_label = f"Page {page} of {pages}" if pages > 1 else ""
     label_w = _width(page_label, FONT, 8) + 12 if page_label else 0
+    value_x = MARGIN + max(_width(f"{name}:", FONT_BOLD, 10) for name in HEADER_FIELDS) + 8
 
-    title_size = _fit_size(roster.course_title, FONT_BOLD, 13, 9, usable - label_w)
     c.setFillGray(0)
-    c.setFont(FONT_BOLD, title_size)
-    c.drawString(MARGIN, top - 12, roster.course_title)
+    baselines = [top - offset for offset in HEADER_BASELINES]
+    for i, ((name, value), y) in enumerate(zip(header, baselines)):
+        c.setFont(FONT_BOLD, 10)
+        c.drawString(MARGIN, y, f"{name}:")
+        text = value or MISSING
+        font, size = (FONT_BOLD, 12.0) if i == 0 else (FONT, 10.0)
+        room = PAGE_W - MARGIN - value_x - (label_w if i == 0 else 0)
+        size = _fit_size(text, font, size, 7.0, room)
+        if _width(text, font, size) > room:  # never cut text off; scale it to fit instead
+            size *= room / _width(text, font, size)
+        c.setFont(font, size)
+        c.drawString(value_x, y, text)
     if page_label:
         c.setFont(FONT, 8)
         c.setFillGray(0.35)
         c.drawRightString(PAGE_W - MARGIN, top - 11, page_label)
         c.setFillGray(0)
-
-    y = top - 27
-    x = MARGIN
-    for label, value in (("Section: ", roster.section), ("Tutor: ", tutor)):
-        c.setFont(FONT_BOLD, 10)
-        c.drawString(x, y, label)
-        x += _width(label, FONT_BOLD, 10)
-        c.setFont(FONT, 10)
-        c.drawString(x, y, value)
-        x += _width(value, FONT, 10) + 24
 
     c.setLineWidth(0.8)
     c.line(MARGIN, top - HEADER_H + 6, PAGE_W - MARGIN, top - HEADER_H + 6)
@@ -412,17 +435,19 @@ def _draw_column(c: canvas.Canvas, roster: Roster, plan: PagePlan, col: ColumnPl
             continue
         fit = item.fit
         row_h = plan.pitch * fit.units
-        baseline = y - plan.pitch / 2 - 3
+        middle = y - row_h / 2  # everything is centred vertically in its (double-spaced) row
+        lead = fit.name_size * 1.12
+        first_baseline = middle + (len(fit.lines) - 1) * lead / 2 - 0.35 * fit.name_size
         s = item.student
 
         c.setLineWidth(0.8)
         c.setStrokeGray(0)
-        c.rect(x, baseline - 1.5, BOX, BOX, stroke=1, fill=0)
+        c.rect(x, middle - BOX / 2, BOX, BOX, stroke=1, fill=0)
         c.setFont(FONT, ID_SIZE)
-        c.drawString(x + BOX + 4, baseline, s.w_number)
+        c.drawString(x + BOX + 4, middle - 0.35 * ID_SIZE, s.w_number)
         c.setFont(FONT, fit.name_size)
         for n, text in enumerate(fit.lines):
-            c.drawString(name_x, baseline - n * fit.name_size * 1.12, text)
+            c.drawString(name_x, first_baseline - n * lead, text)
 
         y -= row_h
         c.setLineWidth(0.3)

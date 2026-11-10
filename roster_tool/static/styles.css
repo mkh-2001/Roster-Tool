@@ -216,6 +216,9 @@ tr.flash { animation: flash 1.2s ease-out; }
 
 /* Help sheet */
 .help-form { display: grid; grid-template-columns: minmax(200px, 1fr) 2fr; gap: 16px; align-items: start; }
+.help-fields { display: grid; gap: 12px; }
+.help-fields small { font-size: 12px; }
+.field .optional { font-style: normal; font-weight: 400; }
 .days { border: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 8px; }
 .days legend { font-size: 13px; font-weight: 600; color: var(--muted); padding: 0; margin-bottom: 6px; }
 .days label {

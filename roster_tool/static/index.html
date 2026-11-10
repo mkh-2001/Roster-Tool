@@ -93,10 +93,17 @@
 
       <div id="panel-help" role="tabpanel" aria-labelledby="tab-help">
         <div class="help-form">
-          <label class="field tutor">
-            <span>Tutor name</span>
-            <input id="tutor-name" type="text" maxlength="100" autocomplete="off" required>
-          </label>
+          <div class="help-fields">
+            <label class="field tutor">
+              <span>Tutor name</span>
+              <input id="tutor-name" type="text" maxlength="100" autocomplete="off" required>
+            </label>
+            <label class="field">
+              <span>Meetings Location <em class="optional">(optional)</em></span>
+              <input id="meetings-location" type="text" maxlength="300" autocomplete="off" placeholder="e.g. Science 415">
+              <small class="muted">Filled in from the roster when it lists one. Printed on the help sheet only.</small>
+            </label>
+          </div>
           <fieldset class="days">
             <legend>Course meets</legend>
             <label><input type="checkbox" name="day" value="Monday"> Mon</label>

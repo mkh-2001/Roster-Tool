@@ -340,7 +340,15 @@ def test_renaming_a_file_does_not_change_the_roster(tmp_path, fmt):
 
 def test_outputs_are_identical_whatever_the_source_format(results):
     csv_texts = {fmt: generate_csv(res.roster)[0] for fmt, res in results.items()}
-    sheets = {fmt: generate_help_sheet(res.roster, "Jane Tutor", ["Tue", "Thu"]).pdf for fmt, res in results.items()}
+    # Header information legitimately differs by source (a flat CSV export has
+    # no professor, term or meetings); with it equalized, the help sheets must
+    # be byte-identical, so the layout never depends on the source format.
+    reference = results["pdf"].roster
+    sheets = {}
+    for fmt, res in results.items():
+        roster = replace(res.roster, professor=reference.professor, term=reference.term,
+                         meetings_location=reference.meetings_location)
+        sheets[fmt] = generate_help_sheet(roster, "Jane Tutor", ["Tue", "Thu"]).pdf
     assert len(set(csv_texts.values())) == 1
     assert csv_texts["xlsx"].split("\r\n")[0] == "Email,First Name,Last Name,SSO ID,Student ID"
     assert len(csv_texts["xlsx"].strip().split("\r\n")) == 1 + 14 + 3

@@ -176,14 +176,22 @@ def loaded_modules(pid: int) -> list[str]:
         kernel32.CloseHandle(handle)
 
 
-def files_from_source_tree(pid: int) -> list[str]:
-    """Anything the process loaded from the repository (source, tests, a virtualenv) but the built app."""
+def files_from_source_tree(pid: int, bundle_root: Path) -> list[str]:
+    """Anything the process loaded from the repository (source, tests, a virtualenv) but the built app.
+
+    `bundle_root` is the packaged app's own folder (the Windows one-folder
+    distribution's directory, or the .app bundle on macOS) wherever it has
+    been placed - inside the repo (e.g. for a discoverable root-level copy)
+    or outside it. Everything under it is the app being tested, not source;
+    only files inside the repo but OUTSIDE it are a real "loaded from source"
+    finding.
+    """
+    bundle = str(bundle_root).lower()
     if sys.platform == "darwin":
         out = subprocess.run(["lsof", "-nP", "-p", str(pid)], capture_output=True, text=True).stdout
-        return [line for line in out.splitlines() if str(ROOT) in line and str(ROOT / "dist") not in line]
+        return [line for line in out.splitlines() if str(ROOT) in line and bundle not in line.lower()]
     inside = str(ROOT).lower()
-    packaged = str(ROOT / "dist").lower()
-    return [p for p in loaded_modules(pid) if p.lower().startswith(inside) and not p.lower().startswith(packaged)]
+    return [p for p in loaded_modules(pid) if p.lower().startswith(inside) and not p.lower().startswith(bundle)]
 
 
 def lan_ip() -> str | None:
@@ -196,7 +204,7 @@ def lan_ip() -> str | None:
         return None
 
 
-def full_workflow(session: Session, pid: int, private_roster: Path | None) -> None:
+def full_workflow(session: Session, pid: int, bundle_root: Path, private_roster: Path | None) -> None:
     check(bool(session.token) and "default-src 'none'" in session.csp, "UI page served with per-launch token and CSP")
     check('accept=".pdf,.csv,.xlsx"' in session.html and "__ROSTER_" not in session.html,
           "UI lists PDF/CSV/XLSX; all placeholders filled")
@@ -236,7 +244,7 @@ def full_workflow(session: Session, pid: int, private_roster: Path | None) -> No
     check(remote_connections(pid) == [], "no outbound network connections")
     # Say how much was inspected, so a platform without the means to look cannot pass silently.
     inspected = len(loaded_modules(pid)) if sys.platform == "win32" else None
-    check(files_from_source_tree(pid) == [],
+    check(files_from_source_tree(pid, bundle_root) == [],
           "nothing loaded from the source tree or .venv"
           + (f" ({inspected} loaded modules checked)" if inspected is not None else ""))
 
@@ -270,10 +278,14 @@ def main() -> int:
     parser.add_argument("--launchservices", action="store_true", help="macOS: also launch like a double-click")
     parser.add_argument("--private-roster", type=Path, help="real roster to compare (redacted output)")
     args = parser.parse_args()
-    exe = executable(args.app)
+    exe = executable(args.app).resolve()
     if not exe.exists():
         print(f"Packaged app not found: {exe}. Build it first: python scripts/build_app.py")
         return 2
+    # The app's own folder: the Windows one-folder distribution's directory,
+    # or the .app bundle on macOS - wherever it actually is (dist/, the repo
+    # root, or anywhere else). Everything under it is the app, not "source".
+    bundle_root = exe.parents[2] if sys.platform == "darwin" else exe.parent
     sandbox = args.no_network and sys.platform == "darwin"
 
     with tempfile.TemporaryDirectory() as tmp:
@@ -289,7 +301,7 @@ def main() -> int:
         check(url is not None, f"started and serving in {time.time() - t0:.1f} s")
         if url:
             session = Session(url)
-            full_workflow(session, proc.pid, args.private_roster)
+            full_workflow(session, proc.pid, bundle_root, args.private_roster)
             session.post("/api/shutdown", {})
         check(not process_alive(proc, 15) and proc.returncode == 0, "Quit: process exited cleanly (code 0)")
 

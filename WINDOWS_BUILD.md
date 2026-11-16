@@ -92,6 +92,47 @@ This produces `dist\Roster Tool Debug\Roster Tool Debug.exe`. Use it only for
 troubleshooting — it is the supported way to see startup output, since the
 production build deliberately has no console.
 
+### 3a. Root-level convenience copy
+
+For discoverability, the project root also carries a copy of the finished
+distribution, so a nontechnical employee opening the project folder sees the
+app directly instead of having to find it under `dist\`:
+
+```
+Roster Builder\
+└── Roster Tool - Windows\
+      ├── Roster Tool.exe
+      └── _internal\
+```
+
+Make it with:
+
+```bat
+xcopy /E /I "dist\Roster Tool" "Roster Tool - Windows"
+```
+
+**The whole folder is the artifact — `Roster Tool.exe` cannot be moved out of
+it by itself.** It is only 5–6 MB; the real runtime (Python, every compiled
+extension, PDFium, fonts, the UI) is the ~40 MB `_internal\` folder beside it,
+and PyInstaller's one-folder mode resolves everything relative to the exe's
+own directory. Proof: copying just the `.exe` alone into an empty folder and
+launching it exits immediately (code -1) with no window at all. Always copy
+or move `Roster Tool - Windows\` as a whole.
+
+No shortcut is used for this copy, deliberately: a Windows `.lnk`'s target is
+an absolute path, which breaks silently if the project (or just this folder)
+is copied to another computer or a different drive. The folder itself has no
+such dependency — it is exactly the same validated one-folder build, just
+placed somewhere more visible, and works unchanged wherever it ends up.
+
+This root-level copy is git-ignored (`/Roster Tool - Windows/` in
+`.gitignore`) — it is build output, not source, and will not exist in a
+fresh checkout until someone builds and copies it up from `dist\`.
+
+(macOS has the equivalent root-level `Roster Tool.app` copy; see
+[PACKAGING.md](PACKAGING.md) — a `.app` bundle is a single relocatable unit,
+so unlike the Windows folder there is nothing it needs kept beside it.)
+
 ## 4. Test
 
 ### 4.1 Automated smoke test (fake fixtures)
@@ -117,6 +158,21 @@ To compare a real roster privately — counts only, no names or IDs printed:
 .venv\Scripts\python scripts\smoke_test_package.py --private-roster "private_rosters\<file>.pdf"
 ```
 
+To test the root-level convenience copy instead of the `dist\` build, point
+`--app` at it (this was run and passed 23/23, identically to `dist\`):
+
+```bat
+.venv\Scripts\python scripts\smoke_test_package.py --app "Roster Tool - Windows\Roster Tool.exe" --private-roster "private_rosters\<file>.pdf"
+```
+
+The "nothing loaded from the source tree or `.venv`" check understands this:
+it exempts whichever folder actually contains the exe being tested (passed
+through as `bundle_root`), not a hardcoded `dist\` path — so testing a copy
+that lives inside the repository root does not falsely flag the copy's own
+`_internal\` files as "from source". (It also resolves a relative `--app`
+path to absolute before comparing, which matters on Windows since loaded
+module paths from `psapi` come back absolute.)
+
 ### 4.2 Double-click test
 
 Copy `dist\Roster Tool\` somewhere outside the repository (the Desktop is
@@ -137,6 +193,11 @@ fine), then double-click `Roster Tool.exe`:
   about 10 s later (the goodbye grace period). Chrome's `pagehide` beacon is
   what triggers this, and it was confirmed working on Windows.
 * Launch again and use **Quit Roster Tool**. The process exits immediately.
+
+This full sequence (double-click, real-browser tab close, relaunch, Quit) was
+also run directly against the root-level `Roster Tool - Windows\Roster Tool.exe`
+with identical results — no copy to the Desktop needed for that check, since
+the root-level folder is already a complete, independent copy of the build.
 
 ### 4.3 Localhost only
 

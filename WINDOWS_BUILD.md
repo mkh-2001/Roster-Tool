@@ -131,7 +131,13 @@ fresh checkout until someone builds and copies it up from `dist\`.
 
 (macOS has the equivalent root-level `Roster Tool.app` copy; see
 [PACKAGING.md](PACKAGING.md) — a `.app` bundle is a single relocatable unit,
-so unlike the Windows folder there is nothing it needs kept beside it.)
+so unlike the Windows folder there is nothing it needs kept beside it.
+**On a Mac only:** a `.app` that sits unpacked on a Windows disk, or goes
+through a ZIP made or extracted on Windows, loses its symlinks and executable
+bits and will not launch when it comes back. Do not carry the macOS app
+through Windows as a folder. Move the Mac-made
+`Roster-Tool-<version>-macOS-arm64.zip` as a single file instead; see
+"Moving the Mac app" in PACKAGING.md.)
 
 ## 4. Test
 

@@ -476,8 +476,15 @@ def to_csv(rows: list[list], delimiter: str = ",", bom: bool = False) -> bytes:
     return (b"\xef\xbb\xbf" if bom else b"") + buf.getvalue().encode("utf-8")
 
 
+def xlsx_entries(data: bytes) -> list[tuple[str, bytes]]:
+    """A workbook's logical content: its ZIP entries, in order, uncompressed."""
+    import zipfile
+    with zipfile.ZipFile(io.BytesIO(data)) as z:
+        return [(name, z.read(name)) for name in z.namelist()]
+
+
 def build_xlsx(sheets: list[tuple[str, list[list]]], hidden: tuple[str, ...] = ()) -> bytes:
-    """A workbook with the given sheets, made byte-for-byte reproducible."""
+    """A workbook with the given sheets, made byte-for-byte reproducible on every platform."""
     import zipfile
     from openpyxl import Workbook
     wb = Workbook()
@@ -500,6 +507,11 @@ def build_xlsx(sheets: list[tuple[str, list[list]]], hidden: tuple[str, ...] = (
                 data = re.sub(rb"(<dcterms:(created|modified)[^>]*>)[^<]*", rb"\g<1>2000-01-01T00:00:00Z", data)
             entry = zipfile.ZipInfo(info.filename, date_time=(2000, 1, 1, 0, 0, 0))
             entry.compress_type = zipfile.ZIP_DEFLATED
+            # ZipInfo takes these from the building machine (create_system is 0 on
+            # Windows, 3 elsewhere; external_attr is filled in at write time), which
+            # would make the fixture's bytes depend on who built it. Pin both.
+            entry.create_system = 3          # Unix, regardless of the build platform
+            entry.external_attr = 0o600 << 16
             dst.writestr(entry, data)
     return out.getvalue()
 

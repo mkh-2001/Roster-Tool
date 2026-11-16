@@ -6,6 +6,7 @@ import logging
 import socket
 import tempfile
 import threading
+import time
 import urllib.error
 import urllib.request
 
@@ -132,6 +133,49 @@ def test_api_rejects_cross_origin(server):
 def test_oversized_json_rejected(server):
     status, _, _ = call(server, "/api/validate", b"{" + b" " * (MAX_JSON_BYTES + 10) + b"}")
     assert status == 413
+
+
+@pytest.mark.parametrize("path,token,expected", [
+    ("/api/roster", False, b"403"),   # no token
+    ("/api/nope", True, b"404"),      # unknown route
+])
+def test_rejected_posts_stay_readable_with_an_unread_body(server, path, token, expected):
+    """A rejected POST must drain its body before the connection closes.
+
+    The body is still unread when a 403/404 goes out. Closing with it unread
+    makes Windows reset the connection, and the reset costs the caller the
+    response it has not read yet, so the UI sees a dropped connection instead
+    of the error message.
+
+    The body is sent on its own, after the headers, so it cannot have been
+    picked up with them by the handler's buffered reader: that is what makes
+    this deterministic instead of a race the suite only loses sometimes.
+    """
+    body = b"x" * 8192
+    head = (
+        f"POST {path} HTTP/1.1\r\nHost: {LOOPBACK}:{server.port}\r\n"
+        f"Content-Type: application/octet-stream\r\nContent-Length: {len(body)}\r\n"
+        + (f"X-Roster-Token: {server.token}\r\n" if token else "")
+        + "\r\n"
+    ).encode()
+    sock = socket.create_connection((LOOPBACK, server.port), timeout=10)
+    received = b""
+    try:
+        sock.sendall(head)
+        time.sleep(0.3)   # the headers are parsed; the body is still to come
+        sock.sendall(body)
+        time.sleep(0.3)   # the answer must survive until it is read
+        while True:
+            chunk = sock.recv(65536)
+            if not chunk:
+                break
+            received += chunk
+    except OSError as exc:
+        pytest.fail(f"connection broke instead of answering {expected.decode()}: {type(exc).__name__}")
+    finally:
+        sock.close()
+    assert received.split(b" ")[1] == expected
+    assert b'"error"' in received
 
 
 def test_malformed_requests_get_clean_errors(server):

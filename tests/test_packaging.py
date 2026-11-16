@@ -355,8 +355,22 @@ def test_build_verification_rejects_bad_contents(tmp_path, add, needle):
 
 
 def test_build_outputs_are_git_ignored():
-    for path in ("dist/Roster Tool.app/Contents/Info.plist", "build/pyinstaller/x", "dist/Roster-Tool-0.1.0-macOS-arm64.zip"):
+    for path in ("dist/Roster Tool.app/Contents/Info.plist", "build/pyinstaller/x",
+                 "dist/Roster-Tool-0.1.0-macOS-arm64.zip",
+                 # Windows one-folder build and its archive.
+                 "dist/Roster Tool/Roster Tool.exe", "dist/Roster Tool/_internal/python312.dll",
+                 "dist/Roster-Tool-0.1.0-Windows-x64.zip"):
         assert subprocess.run(["git", "check-ignore", "-q", path], cwd=ROOT).returncode == 0, path
+
+
+def test_spec_gives_the_windows_exe_version_metadata_from_the_single_source():
+    """The .exe's Properties -> Details must come from roster_tool.__version__, not a literal."""
+    spec = (ROOT / "packaging" / "roster_tool.spec").read_text()
+    assert 'sys.platform == "win32"' in spec and "VSVersionInfo(" in spec
+    assert 'StringStruct("FileVersion", __version__)' in spec
+    assert 'StringStruct("ProductVersion", __version__)' in spec
+    assert "version=win_version" in spec  # actually passed to EXE()
+    assert not re.search(r'StringStruct\("(File|Product)Version", ["\']', spec)
 
 
 def test_third_party_notices_match_installed_versions():

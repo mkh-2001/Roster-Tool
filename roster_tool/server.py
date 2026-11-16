@@ -140,11 +140,39 @@ class RequestHandler(BaseHTTPRequestHandler):
     def _error(self, status: int, message: str, **extra) -> None:
         self._json(status, {"error": message, **extra})
 
+    def _discard_body(self) -> None:
+        """Read and drop the request body of a request we are about to reject.
+
+        A request turned away by the checks below is answered before its body
+        has been read. Closing the connection with that body still unread makes
+        Windows reset it, and the reset throws away the response the client has
+        not read yet - so the caller sees a dropped connection instead of our
+        message (Linux and macOS happen to hand over the response first).
+        Draining a bounded amount first keeps the error readable everywhere.
+        """
+        try:
+            remaining = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            remaining = 0
+        if "chunked" in self.headers.get("Transfer-Encoding", "").lower() or not 0 < remaining <= MAX_DRAIN_BYTES:
+            self.close_connection = True  # nothing to drain, or more than we are willing to read
+            return
+        while remaining > 0:
+            chunk = self.rfile.read(min(remaining, 1 << 20))
+            if not chunk:
+                break
+            remaining -= len(chunk)
+
+    def _reject(self, status: int, message: str) -> None:
+        """Answer a request whose body was never read."""
+        self._discard_body()
+        self._error(status, message)
+
     # -- request checks -------------------------------------------------------
 
     def _host_ok(self) -> bool:
         if self.headers.get("Host", "") not in self.server.allowed_hosts:
-            self._error(403, "Forbidden")
+            self._reject(403, "Forbidden")
             return False
         return True
 
@@ -157,27 +185,23 @@ class RequestHandler(BaseHTTPRequestHandler):
             or (origin is not None and origin != self.server.origin)
             or (fetch_site is not None and fetch_site not in ("same-origin", "none"))
         ):
-            self._error(403, "Forbidden")
+            self._reject(403, "Forbidden")
             return False
         return True
 
     def _read_body(self, limit: int) -> bytes | None:
+        # Without a length there is no safe way to drain, so these close the connection.
         if "chunked" in self.headers.get("Transfer-Encoding", "").lower():
-            self._error(411, "Length required")
+            self._reject(411, "Length required")
             return None
         try:
             length = int(self.headers.get("Content-Length", ""))
         except ValueError:
-            self._error(411, "Length required")
+            self._reject(411, "Length required")
             return None
         if length < 0 or length > limit:
             # Drain (bounded) so the client receives the 413 message instead of a broken pipe.
-            remaining = length if 0 < length <= MAX_DRAIN_BYTES else 0
-            while remaining > 0:
-                chunk = self.rfile.read(min(remaining, 1 << 20))
-                if not chunk:
-                    break
-                remaining -= len(chunk)
+            self._discard_body()
             self.close_connection = True
             self._error(413, f"File is too large (limit {limit // (1024 * 1024)} MB).")
             return None
@@ -231,7 +255,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             "/api/shutdown": self._api_shutdown,
         }.get(self._route())
         if handler is None:
-            self._error(404, "Not found")
+            self._reject(404, "Not found")
             return
         try:
             handler()

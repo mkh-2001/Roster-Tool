@@ -11,13 +11,13 @@ not a legal opinion.
 
 | Component | Version | License | Where the license text is in the package |
 |---|---|---|---|
-| Python runtime | 3.13 | Python Software Foundation License | `licenses/Python/LICENSE.txt` |
+| Python runtime | 3.13 (macOS build), 3.12 (Windows build) | Python Software Foundation License | `licenses/Python/LICENSE.txt` |
 | pypdfium2 | 5.15.2 | Apache-2.0 or BSD-3-Clause | `pypdfium2-5.15.2.dist-info/licenses/LICENSES/` |
 | PDFium (native PDF engine bundled by pypdfium2) | per pypdfium2 | BSD-3-Clause, plus its own third-party components (see the note below) | `pypdfium2-5.15.2.dist-info/licenses/BUILD_LICENSES/` |
 | ReportLab | 5.1.0 | BSD-3-Clause (Copyright (c) 2000-2025, ReportLab Inc.) | `reportlab-5.1.0.dist-info/licenses/LICENSE` |
 | Pillow (dependency of ReportLab) | 13.0.0 | MIT-CMU (HPND), with the licenses of its bundled image libraries | `pillow-13.0.0.dist-info/licenses/LICENSE` |
-| openpyxl | 3.1.5 | MIT | Reproduced below (the package does not ship a license file) |
-| et_xmlfile (dependency of openpyxl) | 2.0.0 | MIT | Reproduced below (the package does not ship a license file) |
+| openpyxl | 3.1.5 | MIT | `openpyxl-3.1.5.dist-info/LICENCE.rst` (also reproduced below) |
+| et_xmlfile (dependency of openpyxl) | 2.0.0 | MIT | `et_xmlfile-2.0.0.dist-info/LICENCE.rst` (also reproduced below) |
 | DejaVu Sans Condensed fonts | 2.37 | Bitstream Vera / DejaVu font license (permissive) | `roster_tool/assets/fonts/DejaVu-LICENSE.txt` |
 | PyInstaller bootloader | 6.22.3 | GPL-2.0-or-later **with the PyInstaller bootloader exception**, which allows distributing applications built with PyInstaller under any terms | `pyinstaller-6.22.3.dist-info/` |
 

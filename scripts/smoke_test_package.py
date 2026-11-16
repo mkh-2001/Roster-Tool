@@ -129,19 +129,61 @@ def listening_addresses(pid: int) -> list[str]:
             if len(cols) >= 5 and cols[3] == "LISTENING" and cols[4] == str(pid)]
 
 
+LOOPBACK_PREFIXES = ("127.", "[::1]:", "0.0.0.0:", "[::]:", "*:")
+
+
 def remote_connections(pid: int) -> list[str]:
-    if sys.platform != "darwin":
-        return []
-    out = subprocess.run(["lsof", "-nP", "-a", "-p", str(pid), "-i"], capture_output=True, text=True).stdout
-    return [m for m in re.findall(r"->(\S+)", out) if not m.startswith(("127.0.0.1:", "[::1]:"))]
+    if sys.platform == "darwin":
+        out = subprocess.run(["lsof", "-nP", "-a", "-p", str(pid), "-i"], capture_output=True, text=True).stdout
+        return [m for m in re.findall(r"->(\S+)", out) if not m.startswith(("127.0.0.1:", "[::1]:"))]
+    # Windows: every TCP endpoint of this PID that is not listening and not loopback.
+    out = subprocess.run(["netstat", "-ano", "-p", "TCP"], capture_output=True, text=True).stdout
+    remote = []
+    for cols in (line.split() for line in out.splitlines()):
+        if len(cols) >= 5 and cols[4] == str(pid) and cols[3] != "LISTENING":
+            if not cols[2].startswith(LOOPBACK_PREFIXES):
+                remote.append(cols[2])
+    return remote
+
+
+def loaded_modules(pid: int) -> list[str]:
+    """Full paths of the executable and DLLs the process has loaded (Windows, psapi)."""
+    import ctypes
+    from ctypes import wintypes
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    psapi = ctypes.WinDLL("psapi", use_last_error=True)
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    psapi.EnumProcessModules.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.HMODULE),
+                                         wintypes.DWORD, ctypes.POINTER(wintypes.DWORD)]
+    psapi.GetModuleFileNameExW.argtypes = [wintypes.HANDLE, wintypes.HMODULE,
+                                           wintypes.LPWSTR, wintypes.DWORD]
+    handle = kernel32.OpenProcess(0x0400 | 0x0010, False, pid)  # QUERY_INFORMATION | VM_READ
+    if not handle:
+        raise OSError(f"cannot inspect process {pid}: {ctypes.get_last_error()}")
+    try:
+        modules = (wintypes.HMODULE * 2048)()
+        needed = wintypes.DWORD()
+        if not psapi.EnumProcessModules(handle, modules, ctypes.sizeof(modules), ctypes.byref(needed)):
+            raise OSError(f"cannot list modules of process {pid}: {ctypes.get_last_error()}")
+        buf = ctypes.create_unicode_buffer(32768)
+        paths = []
+        for i in range(min(len(modules), needed.value // ctypes.sizeof(wintypes.HMODULE))):
+            if psapi.GetModuleFileNameExW(handle, modules[i], buf, len(buf)):
+                paths.append(buf.value)
+        return paths
+    finally:
+        kernel32.CloseHandle(handle)
 
 
 def files_from_source_tree(pid: int) -> list[str]:
-    if sys.platform != "darwin":
-        return []
-    out = subprocess.run(["lsof", "-nP", "-p", str(pid)], capture_output=True, text=True).stdout
-    # Anything open inside the repository (source tree, tests, any virtualenv) other than the built app itself.
-    return [line for line in out.splitlines() if str(ROOT) in line and str(ROOT / "dist") not in line]
+    """Anything the process loaded from the repository (source, tests, a virtualenv) but the built app."""
+    if sys.platform == "darwin":
+        out = subprocess.run(["lsof", "-nP", "-p", str(pid)], capture_output=True, text=True).stdout
+        return [line for line in out.splitlines() if str(ROOT) in line and str(ROOT / "dist") not in line]
+    inside = str(ROOT).lower()
+    packaged = str(ROOT / "dist").lower()
+    return [p for p in loaded_modules(pid) if p.lower().startswith(inside) and not p.lower().startswith(packaged)]
 
 
 def lan_ip() -> str | None:
@@ -192,7 +234,11 @@ def full_workflow(session: Session, pid: int, private_roster: Path | None) -> No
             reachable = False
         check(not reachable, "not reachable from the network (LAN address refused)")
     check(remote_connections(pid) == [], "no outbound network connections")
-    check(files_from_source_tree(pid) == [], "nothing loaded from the source tree or .venv")
+    # Say how much was inspected, so a platform without the means to look cannot pass silently.
+    inspected = len(loaded_modules(pid)) if sys.platform == "win32" else None
+    check(files_from_source_tree(pid) == [],
+          "nothing loaded from the source tree or .venv"
+          + (f" ({inspected} loaded modules checked)" if inspected is not None else ""))
 
     if private_roster:
         from roster_tool.pipeline import process_roster

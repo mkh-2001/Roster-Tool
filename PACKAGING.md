@@ -7,7 +7,7 @@ close the tab. They need no Python, Terminal, URL or internet connection.
 | Platform | Status |
 |---|---|
 | **macOS (Apple Silicon)** | **Built and validated:** `Roster Tool.app` (arm64), built with the official python.org Python 3.13.15. **Requires macOS 13.0 or later**, measured from the bundled binaries (see below); so far it has been run on macOS 26.6. The automated smoke test passes, including with all non-loopback network access blocked, a normal macOS launch and a real-browser tab-close test. |
-| **Windows** | **Prepared, not validated.** The same spec and build script support Windows, but no Windows build has been made or run yet. Follow [WINDOWS_BUILD.md](WINDOWS_BUILD.md) on a Windows PC. |
+| **Windows (x64)** | **Built and validated:** `Roster Tool\Roster Tool.exe` (one folder), built on Windows 11 Home 10.0.26200 with the python.org Python 3.12.2. **Requires Windows 10 or later**, measured from the bundled binaries (PDFium sets the floor); only Windows 11 has been tested. The automated smoke test passes (23/23 with a real roster), as do a double-click launch, a real-browser tab-close test and a loopback-only check. Outstanding: the offline (network-disconnected) test. Unsigned. Follow [WINDOWS_BUILD.md](WINDOWS_BUILD.md). |
 
 ## How the packaged app works
 
@@ -205,11 +205,15 @@ fake fixtures only.
 
 ## Windows
 
-See [WINDOWS_BUILD.md](WINDOWS_BUILD.md). In summary: build on Windows with the
-same `scripts/build_app.py`. The output is a `dist\Roster Tool\` folder with
-`Roster Tool.exe`, which has no console window and Windows version metadata.
-Expect SmartScreen and antivirus scrutiny of an unsigned frozen Python app.
-The remedy is Authenticode code signing and IT allowlisting, never evasion.
+See [WINDOWS_BUILD.md](WINDOWS_BUILD.md) for the validated procedure and its
+measured results. In summary: build on Windows with the same
+`scripts/build_app.py`. The output is a `dist\Roster Tool\` folder with
+`Roster Tool.exe` (46 MB, 164 files), which has no console window and carries
+Windows version metadata. It binds only to `127.0.0.1`, creates no firewall
+rule and raised nothing in Microsoft Defender. Expect SmartScreen scrutiny of a
+*downloaded* copy, because the exe is unsigned — locally built copies carry no
+Mark-of-the-Web and are not checked. The remedy is Authenticode code signing
+and IT allowlisting, never evasion.
 
 ## Possible future enhancements (not done)
 

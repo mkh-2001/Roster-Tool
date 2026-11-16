@@ -28,7 +28,8 @@ from roster_tool.pipeline import process_pdf
 
 PRIVATE = Path(__file__).resolve().parent.parent / "private_rosters"
 EXPECTED = PRIVATE / "expected.json"
-CASES = json.loads(EXPECTED.read_text(encoding="utf-8")) if EXPECTED.exists() else {}
+# utf-8-sig: this file is written by hand, and Windows editors tend to add a BOM.
+CASES = json.loads(EXPECTED.read_text(encoding="utf-8-sig")) if EXPECTED.exists() else {}
 
 
 @pytest.mark.skipif(not CASES, reason="no private real-roster fixtures on this machine")

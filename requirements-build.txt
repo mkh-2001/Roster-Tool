@@ -6,4 +6,6 @@ pyinstaller-hooks-contrib==2026.9
 altgraph==0.17.5
 packaging==26.3
 macholib==1.16.4; sys_platform == "darwin"
-# Windows additionally pulls pefile and pywin32-ctypes (pin them after the first validated Windows build).
+# PyInstaller's Windows-only dependencies, pinned to the validated Windows build set.
+pefile==2024.8.26; sys_platform == "win32"
+pywin32-ctypes==0.2.3; sys_platform == "win32"

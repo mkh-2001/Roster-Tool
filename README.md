@@ -15,8 +15,10 @@ telemetry, no database and no internet requirement.
 > real rosters (especially one with waitlisted students) should be validated
 > using [REAL_ROSTER_INTEGRATION.md](REAL_ROSTER_INTEGRATION.md).
 > **Desktop app:** a macOS `Roster Tool.app` is built and validated (Apple
-> Silicon, macOS 13 or later; unsigned internal build). Windows packaging is
-> prepared but not yet validated. See [PACKAGING.md](PACKAGING.md) and
+> Silicon, macOS 13 or later; unsigned internal build), and a Windows
+> `Roster Tool.exe` folder is built and validated on Windows 11 x64 (Windows 10
+> is the technical floor but untested; the offline test is still outstanding).
+> Both are unsigned internal builds. See [PACKAGING.md](PACKAGING.md) and
 > [WINDOWS_BUILD.md](WINDOWS_BUILD.md).
 
 ## Run it (development)

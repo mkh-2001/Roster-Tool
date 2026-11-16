@@ -18,6 +18,7 @@ import pytest
 from fixture_builder import (
     CSV_COLUMNS, CSV_FIXTURE, FIXTURE_DIR, NOTES_SHEET, SECTIONED, XLSX_FIXTURE, FakeRow, build_image_only_pdf,
     build_sectioned_csv, build_sectioned_xlsx, build_xlsx, sectioned_csv_rows, sectioned_table_rows, to_csv,
+    xlsx_entries,
 )
 from roster_tool.errors import (
     FormatMismatchError, MalformedInputError, RosterInputError, RosterStructureError, UnsupportedInputError,
@@ -55,7 +56,12 @@ def results():
 
 def test_committed_fixtures_are_reproducible():
     assert build_sectioned_csv(SECTIONED) == CSV
-    assert build_sectioned_xlsx(SECTIONED) == XLSX
+    xlsx = build_sectioned_xlsx(SECTIONED)
+    # Content first (a readable diff), then the bytes: build_xlsx pins every
+    # field zipfile would otherwise take from the building machine, so the
+    # fixture is byte-identical whoever rebuilds it, on any platform.
+    assert xlsx_entries(xlsx) == xlsx_entries(XLSX)
+    assert xlsx == XLSX
 
 
 @pytest.mark.parametrize("fmt", ["pdf", "csv", "xlsx"])

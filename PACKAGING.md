@@ -7,7 +7,7 @@ close the tab. They need no Python, Terminal, URL or internet connection.
 | Platform | Status |
 |---|---|
 | **macOS (Apple Silicon)** | **Built and validated:** `Roster Tool.app` (arm64), built with the official python.org Python 3.13.15. **Requires macOS 13.0 or later**, measured from the bundled binaries (see below); so far it has been run on macOS 26.6. The automated smoke test passes, including with all non-loopback network access blocked, a normal macOS launch and a real-browser tab-close test. |
-| **Windows (x64)** | **Built and validated:** `Roster Tool\Roster Tool.exe` (one folder), built on Windows 11 Home 10.0.26200 with the python.org Python 3.12.2. **Requires Windows 10 or later**, measured from the bundled binaries (PDFium sets the floor); only Windows 11 has been tested. The automated smoke test passes (23/23 with a real roster), as do a double-click launch, a real-browser tab-close test and a loopback-only check. Outstanding: the offline (network-disconnected) test. Unsigned. Follow [WINDOWS_BUILD.md](WINDOWS_BUILD.md). |
+| **Windows (x64)** | **Built and validated:** `Roster Tool\Roster Tool.exe` (one folder), built on Windows 11 Home 10.0.26200 with the python.org Python 3.12.2. **Requires Windows 10 or later**, measured from the bundled binaries (PDFium sets the floor); only Windows 11 has been tested. The automated smoke test passes (23/23 with a real roster), as do a double-click launch, a real-browser tab-close test and a loopback-only check. Outstanding: the offline (network-disconnected) test. Unsigned. **Rebuild pending:** the current Windows build predates the `chore: final v0.1.0 cleanup` commit; rebuild from it on the Windows x64 PC. Follow [WINDOWS_BUILD.md](WINDOWS_BUILD.md). |
 
 ## Where staff actually find the app
 
@@ -62,11 +62,11 @@ which keeps the bundle's symlinks, permissions and signature intact:
 ditto "dist/Roster Tool.app" "Roster Tool.app"
 ```
 
-The root-level copy has been launch-tested from that location (2026-11-16, macOS 26.6, build of
-commit `aa00356`): `smoke_test_package.py --app "Roster Tool.app" --no-network
---launchservices` passes 25/25, a normal `open` runs that copy and opens the
-default browser, and a real Chrome tab passed the Tutor-required, Meetings
-Location, Help Sheet, Event CSV, Download, Quit and tab-close checks.
+The root-level copy has been launch-tested from that location (2026-11-16, macOS 26.6):
+`smoke_test_package.py --app "Roster Tool.app" --no-network --launchservices`
+passes 24/24 (25/25 with `--private-roster`), a normal `open` runs that copy and
+opens the default browser, and a real Chrome tab passed the Tutor-required,
+Meetings Location, Help Sheet, Event CSV, Download, Quit and tab-close checks.
 
 ### Moving the Mac app: move the `.zip`, never the unpacked `.app`
 
@@ -200,6 +200,12 @@ needed, and the build script checks and records the resulting minimum anyway.
 
 `requirements.txt` and `requirements-build.txt` pin **exact** versions,
 including transitive ones, so every build environment matches the validated set.
+
+**In a project folder that also holds the Windows build:** on macOS, PyInstaller
+uses `dist/Roster Tool/` for its intermediate output and deletes it. That is the
+Windows build's folder, so `build_app.py` stops ("BUILD STOPPED") rather than
+destroy it. Move `dist/Roster Tool/` out of `dist/` first and put it back after
+the build. The Windows ZIP in `dist/` is not affected.
 
 | Output | Size |
 |---|---|
@@ -341,3 +347,10 @@ The bundled components and their licenses are listed in
 together with each component's license texts. ReportLab's unused demo fonts
 (some GPL-licensed) are removed from the package. PyInstaller's bootloader is
 GPL with an exception that allows distributing the built app.
+
+**Future review item (not needed for internal v0.1.0 use):** the notices cover
+the directly bundled project dependencies and the Python runtime as a whole.
+They do not itemize the native libraries that come with the Python runtime
+itself: OpenSSL (`libssl`/`libcrypto`) in both builds, and on Windows also
+`libffi` and the Microsoft C runtime (`VCRUNTIME140.dll`, `ucrtbase.dll`).
+Review their notice requirements before any broader distribution.

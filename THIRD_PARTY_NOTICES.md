@@ -18,6 +18,7 @@ not a legal opinion.
 | Pillow (dependency of ReportLab) | 13.0.0 | MIT-CMU (HPND), with the licenses of its bundled image libraries | `pillow-13.0.0.dist-info/licenses/LICENSE` |
 | openpyxl | 3.1.5 | MIT | `openpyxl-3.1.5.dist-info/LICENCE.rst` (also reproduced below) |
 | et_xmlfile (dependency of openpyxl) | 2.0.0 | MIT | `et_xmlfile-2.0.0.dist-info/LICENCE.rst` (also reproduced below) |
+| charset-normalizer (dependency of ReportLab) | 3.5.2 | MIT | Reproduced below |
 | DejaVu Sans Condensed fonts | 2.37 | Bitstream Vera / DejaVu font license (permissive) | `roster_tool/assets/fonts/DejaVu-LICENSE.txt` |
 | PyInstaller bootloader | 6.22.3 | GPL-2.0-or-later **with the PyInstaller bootloader exception**, which allows distributing applications built with PyInstaller under any terms | `pyinstaller-6.22.3.dist-info/` |
 
@@ -31,10 +32,11 @@ libpng, libtiff, libyuv, llvm-libc, simdutf, strongtalk, V8 and zlib.
   not use. The build removes them.
 * Development tools such as pytest.
 
-## MIT License: openpyxl 3.1.5 and et_xmlfile 2.0.0
+## MIT License: openpyxl 3.1.5, et_xmlfile 2.0.0 and charset-normalizer 3.5.2
 
 openpyxl: Copyright (c) 2010 openpyxl
 et_xmlfile: Copyright (c) 2010-2015 openpyxl
+charset-normalizer: Copyright (c) 2025 TAHRI Ahmed R.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

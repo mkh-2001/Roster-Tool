@@ -196,22 +196,22 @@ def test_meetings_location_is_prefilled_from_the_roster_and_editable():
         lines = header_lines(generate_help_sheet(roster, "Jane", ["Tue"], **kwargs).pdf)
         return next(line for line in lines if line.startswith("Meetings Location:"))
 
-    assert location_line(roster_value="Science 415") == "Meetings Location: Science 415"  # not sent: roster's
-    assert location_line(roster_value="Science 415", meetings_location=" Room 5 ") == "Meetings Location: Room 5"
+    assert location_line(roster_value="Room 210") == "Meetings Location: Room 210"  # not sent: roster's
+    assert location_line(roster_value="Room 210", meetings_location=" Room 5 ") == "Meetings Location: Room 5"
     assert location_line(meetings_location="Library  210") == "Meetings Location: Library 210"  # entered by hand
-    assert location_line(roster_value="Science 415", meetings_location="") == "Meetings Location: —"  # cleared
+    assert location_line(roster_value="Room 210", meetings_location="") == "Meetings Location: —"  # cleared
     assert location_line() == "Meetings Location: —"  # optional
     with pytest.raises(HelpSheetInputError, match="Meetings Location"):
         generate_help_sheet(make_roster(3), "Jane", ["Tue"], meetings_location="x" * 301)
 
 
 def test_header_values_come_from_the_roster_and_fit_the_page():
-    roster = make_roster(3, professor="de la Vega, Ines", meetings_location="Science 415",
-                         term="Fall 2026 | Full Semester | August 22, 2026 - December 17, 2026")
+    roster = make_roster(3, professor="de la Vega, Ines", meetings_location="Room 210",
+                         term="Fall 2026 | Full Semester | August 24, 2026 - December 18, 2026")
     result = generate_help_sheet(roster, "Jane", ["Tue"])
     assert header_lines(result.pdf) == [
         "Class: PHIL 320 Logic and Critical Reasoning", "Professor: de la Vega, Ines", "Tutor: Jane",
-        "Meetings Location: Science 415", "Term: Fall 2026 | Full Semester | August 22, 2026 - December 17, 2026",
+        "Meetings Location: Room 210", "Term: Fall 2026 | Full Semester | August 24, 2026 - December 18, 2026",
     ]
     long_roster = make_roster(3, course_title="ENGL 300 " + "Very Long Course Title " * 8, professor="X" * 120)
     long_sheet = generate_help_sheet(long_roster, "T" * 100, ["Tue"], meetings_location="Room " * 60)

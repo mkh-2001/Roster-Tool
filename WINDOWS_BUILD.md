@@ -6,6 +6,14 @@
 > by the loopback/outbound evidence in step 4.3 rather than by a real
 > disconnection test. PyInstaller cannot cross-compile: the Windows package
 > must be built on Windows, never derived from the macOS build.
+>
+> **Rebuild pending (next deployment step):** the validated Windows build, and
+> its root-level `Roster Tool - Windows\` copy, predate the
+> `chore: final v0.1.0 cleanup` commit. That commit changed three UI messages to
+> format-neutral wording, listed charset-normalizer in THIRD_PARTY_NOTICES.md
+> and removed unused code, with no behavior change. **Rebuild from that commit
+> on the Windows x64 PC** (steps 2–3a; never from the Mac), then re-run
+> section 4.
 
 ## Reference build actually used
 
@@ -53,10 +61,10 @@ py -3.12 -m venv .venv
 .venv\Scripts\python -m pytest
 ```
 
-All tests must pass: **306 passed, 1 skipped**. The skip is the optional
+All tests must pass: **309 passed, 1 skipped**. The skip is the optional
 real-roster test, which runs only on a machine that has both a roster and a
 hand-written `private_rosters\expected.json`; where those exist it is
-**307 passed**, with nothing skipped.
+**310 passed**, with nothing skipped.
 
 > **PowerShell note.** `.venv\Scripts\Activate.ps1` may be blocked by the
 > execution policy. There is no need to change the policy or to activate the

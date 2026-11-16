@@ -112,6 +112,6 @@ def test_csv_filename_is_safe():
 
 def test_help_sheet_header_fields_never_reach_the_csv():
     plain = make_roster(5)
-    dressed = make_roster(5, professor="Staff", term="Fall 2026", meetings_location="Science 415")
+    dressed = make_roster(5, professor="Staff", term="Fall 2026", meetings_location="Room 210")
     assert generate_csv(dressed) == generate_csv(plain)
     assert generate_csv_bytes(dressed) == generate_csv_bytes(plain)

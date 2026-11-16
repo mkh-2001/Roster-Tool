@@ -120,7 +120,7 @@ class Roster:
     # Header information shown on the Help Sheet ("" when the roster doesn't give it).
     professor: str = ""
     term: str = ""
-    meetings_location: str = ""  # e.g. "Science 415", or "Room 101 (LEC); Room 102 (LAB)"
+    meetings_location: str = ""  # e.g. "Room 210", or "Room 101 (LEC); Room 102 (LAB)"
 
     @property
     def current_students(self) -> list[Student]:

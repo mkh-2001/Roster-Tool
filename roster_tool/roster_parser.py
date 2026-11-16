@@ -41,7 +41,7 @@ import statistics
 from dataclasses import dataclass, field
 from typing import Protocol
 
-from .models import CURRENT, WAITLIST, W_NUMBER_RE, Roster, Student, normalize_roster
+from .models import CURRENT, WAITLIST, W_NUMBER_RE, Roster, Student
 from .names import NOTE_NO_COMMA, split_name
 from .pdf_extractor import ExtractedDocument, TextCell, TextLine
 
@@ -88,7 +88,7 @@ class ParseRules:
     # A class number in a meeting line: component code + 5-digit number.
     class_number: re.Pattern = re.compile(r"\b[A-Z]{3}\s+(\d{5})\b")
     # The time range in a meeting line; the meeting location is the text
-    # between it and the component code ("... 10:20 am Science 415 LEC 10153").
+    # between it and the component code ("... 9:15 am Room 210 LEC 12345").
     meeting_time: re.Pattern = _rx(r"\d{1,2}:\d{2}\s*[ap]m\s*-\s*\d{1,2}:\d{2}\s*[ap]m")
     # Help Sheet header information.
     professor_labels: tuple[str, ...] = ("professor", "instructor")
@@ -382,8 +382,8 @@ class TableRosterParser:
 
     def _meetings_location(self, doc: ExtractedDocument) -> str:
         """Meeting location(s): the text between a meeting line's time range and
-        its component code ("TuTh 9:00 am - 10:20 am Science 415 LEC 10153"
-        -> "Science 415"). One location is shown once; different locations are
+        its component code ("MoWe 8:00 am - 9:15 am Room 210 LEC 12345"
+        -> "Room 210"). One location is shown once; different locations are
         listed with their component ("Room 101 (LEC); Room 102 (LAB)"). A line
         without a time range gives no location (not guessed)."""
         r = self.rules
@@ -669,8 +669,3 @@ class TableRosterParser:
 
 
 DEFAULT_PARSER = TableRosterParser()
-
-
-def parse_roster(doc: ExtractedDocument, parser: RosterParser | None = None) -> Roster:
-    result = (parser or DEFAULT_PARSER).parse(doc)
-    return normalize_roster(result.roster)

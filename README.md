@@ -20,6 +20,10 @@ telemetry, no database and no internet requirement.
 > is the technical floor but untested; the offline test is still outstanding).
 > Both are unsigned internal builds. See [PACKAGING.md](PACKAGING.md) and
 > [WINDOWS_BUILD.md](WINDOWS_BUILD.md).
+> **Where the built apps are:** the project root holds `Roster Tool.app` (macOS)
+> and `Roster Tool - Windows\` (keep `Roster Tool.exe` together with its
+> `_internal\` folder). Move the Mac app between computers only as the Mac-made
+> `.zip`, never as an unpacked `.app` through Windows (see PACKAGING.md).
 
 ## Run it (development)
 
@@ -35,8 +39,8 @@ clicked, or on Ctrl+C. It runs the same launcher as the packaged desktop app.
 | Task | Command |
 |---|---|
 | Run all tests | `.venv/bin/python -m pytest` |
-| Build the desktop app (this platform) | `.venv/bin/python scripts/build_app.py` (needs `requirements-build.txt`) |
-| Smoke-test the built app | `.venv/bin/python scripts/smoke_test_package.py [--no-network]` |
+| Build the desktop app (this platform) | macOS: `.venv-macos-build/bin/python scripts/build_app.py` with the python.org Python ([PACKAGING.md](PACKAGING.md)); Windows: [WINDOWS_BUILD.md](WINDOWS_BUILD.md) |
+| Smoke-test the built app | `.venv-macos-build/bin/python scripts/smoke_test_package.py [--no-network]` (Windows: WINDOWS_BUILD.md) |
 | Benchmark | `.venv/bin/python scripts/benchmark.py [roster.pdf roster.csv roster.xlsx]` |
 | See what the parser sees | `.venv/bin/python scripts/inspect_pdf.py roster.pdf [--students]` |
 | Regenerate fake fixtures | `.venv/bin/python scripts/make_fixtures.py` |
@@ -71,7 +75,7 @@ roster file ─► format detection ─┬─► PDF:  pdf_extractor ─► rost
   contents; the filename is never used.
 * **Errors block output and are never silently fixed.** Missing, malformed or
   duplicate W numbers, empty names, and a student count that disagrees with
-  the PDF all block output until corrected. Uncertain items (ambiguous name
+  the count stated or numbered in the roster file all block output until corrected. Uncertain items (ambiguous name
   splits, guessed course or section) are shown as warnings.
 
 | Module | Responsibility |
@@ -104,7 +108,7 @@ roster file ─► format detection ─┬─► PDF:  pdf_extractor ─► rost
 | CSV input | stdlib `csv` | RFC 4180 parsing with no extra dependency. |
 | Font | DejaVu Sans Condensed (bundled, [licence](roster_tool/assets/fonts/DejaVu-LICENSE.txt)) | Prints accented names, and the condensed width fits three columns. |
 | CSV | stdlib `csv` | RFC 4180 quoting. UTF-8 without a BOM so the header matches exactly. CRLF line endings. |
-| Server | stdlib `http.server` | Only 4 API routes, no dependency, no debug mode to leave on. |
+| Server | stdlib `http.server` | Only 7 small API routes, no dependency, no debug mode to leave on. |
 | Tests | pytest | |
 
 ## Output formats

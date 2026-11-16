@@ -127,8 +127,8 @@
     const notes = [];
     if (r.expected_count !== null) {
       notes.push(r.expected_count_source === "row_numbers"
-        ? `PDF rows are numbered 1–${r.expected_count}`
-        : `PDF lists ${r.expected_count} enrolled`);
+        ? `Roster rows are numbered 1–${r.expected_count}`
+        : `Roster lists ${r.expected_count} enrolled`);
     }
     if (waitlisted) notes.push(`+ ${waitlisted} on the wait list`);
     $("expected-note").textContent = notes.join(" · ");
@@ -141,7 +141,7 @@
     const missing = !state.roster[field];
     const uncertain = state.roster.uncertain_fields.includes(field);
     input.classList.toggle("needs-check", missing || uncertain);
-    $(hintId).textContent = missing ? "Not found in the PDF. Please enter it." : uncertain ? "Please check this." : "";
+    $(hintId).textContent = missing ? "Not found in the roster. Please enter it." : uncertain ? "Please check this." : "";
   }
 
   function onFieldInput(field, value) {

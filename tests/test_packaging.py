@@ -341,6 +341,17 @@ def test_build_verification_accepts_a_clean_bundle(tmp_path):
     assert build_app.verify_bundle(_fake_bundle(tmp_path)) == []
 
 
+def test_macos_build_detects_a_windows_build_it_would_delete(tmp_path):
+    """dist/Roster Tool/ is both the Windows build and PyInstaller's macOS scratch folder."""
+    dist = tmp_path / "dist"
+    assert build_app.windows_build_in_the_way(dist, "Roster Tool") is None  # no dist/ at all
+    (dist / "Roster Tool").mkdir(parents=True)
+    assert build_app.windows_build_in_the_way(dist, "Roster Tool") is None  # e.g. a leftover macOS intermediate
+    (dist / "Roster Tool" / "Roster Tool.exe").write_bytes(b"MZ")
+    assert build_app.windows_build_in_the_way(dist, "Roster Tool") == dist / "Roster Tool"
+    assert build_app.windows_build_in_the_way(dist, "Roster Tool Debug") is None  # the debug build uses its own folder
+
+
 @pytest.mark.parametrize("add,needle", [
     (lambda b: (b / "export.csv").write_text("x"), "roster-like data file"),
     (lambda b: (b / "tests").mkdir() or (b / "tests" / "x.py").write_text("x"), "forbidden folder"),
@@ -359,8 +370,22 @@ def test_build_outputs_are_git_ignored():
                  "dist/Roster-Tool-0.1.0-macOS-arm64.zip",
                  # Windows one-folder build and its archive.
                  "dist/Roster Tool/Roster Tool.exe", "dist/Roster Tool/_internal/python312.dll",
-                 "dist/Roster-Tool-0.1.0-Windows-x64.zip"):
+                 "dist/Roster-Tool-0.1.0-Windows-x64.zip",
+                 # Root-level convenience copies of both builds.
+                 "Roster Tool.app/Contents/Info.plist", "Roster Tool - Windows/Roster Tool.exe"):
         assert subprocess.run(["git", "check-ignore", "-q", path], cwd=ROOT).returncode == 0, path
+
+
+def test_roster_like_files_are_git_ignored():
+    """Real rosters and generated outputs can never be committed by accident, in any supported
+    or roster-like format, and a file marked as real stays ignored even inside tests/fixtures/."""
+    for path in ("private_rosters/any.pdf", "private_rosters/expected.json", "roster.pdf", "help_sheet.pdf",
+                 "event_invites.csv", "roster.xlsx", "roster.xls", "roster.xlsm", "roster.xlsb", "roster.ods",
+                 "roster.numbers", "tests/fixtures/someone.real.pdf"):
+        assert subprocess.run(["git", "check-ignore", "-q", path], cwd=ROOT).returncode == 0, path
+    for fixture in ("tests/fixtures/mock_roster_sections.pdf", "tests/fixtures/mock_roster_sections.csv",
+                    "tests/fixtures/mock_roster_sections.xlsx"):  # the FAKE fixtures stay committable
+        assert subprocess.run(["git", "check-ignore", "-q", fixture], cwd=ROOT).returncode == 1, fixture
 
 
 def test_spec_gives_the_windows_exe_version_metadata_from_the_single_source():
@@ -375,6 +400,6 @@ def test_spec_gives_the_windows_exe_version_metadata_from_the_single_source():
 
 def test_third_party_notices_match_installed_versions():
     notices = (ROOT / "THIRD_PARTY_NOTICES.md").read_text()
-    for dist in ("pypdfium2", "reportlab", "pillow", "openpyxl", "et_xmlfile", "pyinstaller"):
+    for dist in ("pypdfium2", "reportlab", "pillow", "openpyxl", "et_xmlfile", "charset-normalizer", "pyinstaller"):
         version = importlib.metadata.version(dist)
         assert re.search(rf"{version}\b", notices), f"{dist} {version} missing from THIRD_PARTY_NOTICES.md"

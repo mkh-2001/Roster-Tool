@@ -137,7 +137,7 @@ def test_help_sheet_header_fields_never_reject_a_roster():
     for bad in ("x" * 301, 42, ["Room 1"], {"room": 1}, True):
         r = Roster.from_dict({**data, "meetings_location": bad, "professor": bad, "term": bad})
         assert (r.meetings_location, r.professor, r.term) == ("", "", "")  # dropped, roster still accepted
-    r = Roster.from_dict({**data, "meetings_location": "  Science   415 ", "professor": "Staff", "term": "Fall 2026"})
-    assert (r.meetings_location, r.professor, r.term) == ("Science 415", "Staff", "Fall 2026")
+    r = Roster.from_dict({**data, "meetings_location": "  Room   210 ", "professor": "Staff", "term": "Fall 2026"})
+    assert (r.meetings_location, r.professor, r.term) == ("Room 210", "Staff", "Fall 2026")
     with pytest.raises(ValueError):  # the strict checks on roster data the CSV uses are unchanged
         Roster.from_dict({**data, "course_title": "x" * 301})

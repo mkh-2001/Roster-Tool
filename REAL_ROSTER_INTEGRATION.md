@@ -44,7 +44,8 @@ When a real roster PDF is provided:
 Two constraints also apply:
 
 * **No OCR** unless a real source roster shows that it is actually required (i.e. it has no usable text layer).
-* **No packaging (Phase 10)** until this validation is complete.
+* **Packaging (Phase 10) waited for this validation.** It started only after the
+  first real roster was verified; both desktop builds now exist (PACKAGING.md).
 
 ## Real roster findings (2026-11-09)
 

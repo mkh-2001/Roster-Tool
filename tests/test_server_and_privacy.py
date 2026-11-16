@@ -237,7 +237,7 @@ def test_meetings_location_is_for_the_help_sheet_only(server):
     roster = json.loads(body)["roster"]
     _, plain = post_json(server, "/api/csv", {"roster": roster})
     # Header-only values never change, block or join the Event CSV, whatever they hold.
-    for extra in ({"meetings_location": "Science 415", "professor": "Staff", "term": "Fall 2026"},
+    for extra in ({"meetings_location": "Room 210", "professor": "Staff", "term": "Fall 2026"},
                   {"meetings_location": "x" * 5000}, {"meetings_location": 42}, {"meetings_location": None}):
         edited = {**roster, **extra}
         status, data = post_json(server, "/api/csv", {"roster": edited})

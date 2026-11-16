@@ -377,7 +377,6 @@ def header_values(roster: Roster, tutor: str, meetings_location: str) -> list[tu
 
 def _draw_header(c: canvas.Canvas, header: list[tuple[str, str]], page: int, pages: int) -> None:
     top = PAGE_H - MARGIN
-    usable = PAGE_W - 2 * MARGIN
     page_label = f"Page {page} of {pages}" if pages > 1 else ""
     label_w = _width(page_label, FONT, 8) + 12 if page_label else 0
     value_x = MARGIN + max(_width(f"{name}:", FONT_BOLD, 10) for name in HEADER_FIELDS) + 8

@@ -3,18 +3,25 @@
 # ---------------------------------------------------------------------------
 # Real rosters (and their hand-written expected results) live only here:
 private_rosters/
-*.real.pdf
 # Any PDF except the FAKE test fixtures (real rosters, generated help sheets):
 *.pdf
 !tests/fixtures/*.pdf
-# Generated Event CSVs and any spreadsheet exports:
+# Generated Event CSVs and any spreadsheet exports (every roster-like type the
+# build refuses to package):
 *.csv
 *.tsv
 *.xls
 *.xlsx
+*.xlsm
+*.xlsb
+*.ods
+*.numbers
 # ...except the FAKE test fixtures (invented data only):
 !tests/fixtures/*.csv
 !tests/fixtures/*.xlsx
+# A file marked as real is never committed, not even under tests/fixtures/
+# (this must come after the fixture exceptions above to win over them):
+*.real.pdf
 
 # ---------------------------------------------------------------------------
 # Python / build artifacts

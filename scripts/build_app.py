@@ -151,6 +151,18 @@ def package_size(path: Path) -> int:
     return sum(p.stat().st_size for p in path.rglob("*") if p.is_file() and not p.is_symlink())
 
 
+def windows_build_in_the_way(dist: Path, name: str) -> Path | None:
+    """The Windows one-folder build in dist/<name>/, if present.
+
+    On macOS, PyInstaller uses dist/<name>/ for its intermediate output, which is the very
+    folder the Windows build lives in, and it is replaced and then deleted. A project folder
+    shared between both platforms would silently lose its Windows build, which can only be
+    rebuilt on Windows, so the macOS build stops instead.
+    """
+    folder = dist / name
+    return folder if (folder / f"{name}.exe").is_file() else None
+
+
 # --- Build -------------------------------------------------------------------------------
 
 def main() -> int:
@@ -167,6 +179,11 @@ def main() -> int:
     dirty = subprocess.run(["git", "status", "--porcelain"], cwd=ROOT, capture_output=True, text=True).stdout.strip()
     if dirty:
         print("WARNING: the git working tree has uncommitted changes; release builds should come from a commit.")
+
+    if sys.platform == "darwin" and (windows_build := windows_build_in_the_way(DIST, name)):
+        print(f"BUILD STOPPED: {windows_build.relative_to(ROOT)} holds the Windows build, and the macOS build "
+              "would delete it (PyInstaller reuses that folder). Move it out of dist/ first, then build again.")
+        return 1
 
     env = dict(os.environ, ROSTER_TOOL_DEBUG_BUILD="1" if args.debug else "0")
     if sys.platform == "darwin":

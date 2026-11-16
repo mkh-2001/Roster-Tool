@@ -16,7 +16,7 @@ from dataclasses import replace
 import pytest
 
 from fixture_builder import (
-    CSV_COLUMNS, CSV_FIXTURE, FIXTURE_DIR, NOTES_SHEET, SECTIONED, XLSX_FIXTURE, FakeRow, build_image_only_pdf,
+    CSV_COLUMNS, CSV_FIXTURE, FIXTURE_DIR, NOTES_SHEET, SECTIONED, XLSX_FIXTURE, build_image_only_pdf,
     build_sectioned_csv, build_sectioned_xlsx, build_xlsx, sectioned_csv_rows, sectioned_table_rows, to_csv,
     xlsx_entries,
 )
@@ -407,6 +407,19 @@ def test_ui_lists_supported_types(server):
     assert 'accept=".pdf,.csv,.xlsx"' in html
     assert "Upload Roster" in html and "PDF, CSV or Excel (.xlsx)" in html
     assert "__ROSTER_" not in html
+
+
+def test_ui_wording_is_not_pdf_only(server):
+    """CSV and XLSX rosters share the same UI, so no message may claim the file was a PDF."""
+    served = {}
+    for path in ("/", "/static/app.js"):
+        with urllib.request.urlopen(server.origin + path, timeout=10) as resp:
+            served[path] = resp.read().decode()
+    for stale in ("Upload a different PDF", "PDF rows are numbered", "PDF lists", "Not found in the PDF"):
+        assert all(stale not in text for text in served.values()), stale
+    assert "Upload a different file" in served["/"]
+    app_js = served["/static/app.js"]
+    assert "Roster rows are numbered" in app_js and "Roster lists" in app_js and "Not found in the roster" in app_js
 
 
 # --- Privacy ---------------------------------------------------------------------------------
